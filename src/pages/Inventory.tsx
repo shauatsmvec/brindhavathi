@@ -1,46 +1,181 @@
 import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import { Package, Plus, Search, Filter, Edit, Trash2 } from "lucide-react";
+import { Package, Plus, Search, Filter, Edit, Trash2, X, Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
-interface Product {
-  id: string;
+interface ProductForm {
   name: string;
   sku: string;
-  category: string;
+  category_id: string | null;
   price: number;
-  cost: number;
-  stock: number;
-  minStock: number;
-  status: "in-stock" | "low-stock" | "out-of-stock";
+  cost_price: number;
+  stock_quantity: number;
+  min_stock_level: number;
+  unit: string;
 }
 
-const products: Product[] = [
-  { id: "1", name: "Wireless Bluetooth Headphones", sku: "WBH-001", category: "Electronics", price: 79.99, cost: 35.00, stock: 89, minStock: 20, status: "in-stock" },
-  { id: "2", name: "Smart Watch Pro", sku: "SWP-002", category: "Electronics", price: 199.99, cost: 85.00, stock: 45, minStock: 30, status: "in-stock" },
-  { id: "3", name: "USB-C Fast Charger", sku: "UFC-003", category: "Accessories", price: 24.99, cost: 8.00, stock: 234, minStock: 50, status: "in-stock" },
-  { id: "4", name: "Portable Power Bank", sku: "PPB-004", category: "Accessories", price: 39.99, cost: 15.00, stock: 12, minStock: 25, status: "low-stock" },
-  { id: "5", name: "Wireless Mouse", sku: "WM-005", category: "Peripherals", price: 34.99, cost: 12.00, stock: 167, minStock: 40, status: "in-stock" },
-  { id: "6", name: "Mechanical Keyboard", sku: "MK-006", category: "Peripherals", price: 89.99, cost: 40.00, stock: 0, minStock: 15, status: "out-of-stock" },
-  { id: "7", name: "HD Webcam", sku: "HDW-007", category: "Electronics", price: 59.99, cost: 25.00, stock: 8, minStock: 10, status: "low-stock" },
-  { id: "8", name: "Laptop Stand", sku: "LS-008", category: "Accessories", price: 44.99, cost: 18.00, stock: 56, minStock: 20, status: "in-stock" },
-];
+const initialForm: ProductForm = {
+  name: "",
+  sku: "",
+  category_id: null,
+  price: 0,
+  cost_price: 0,
+  stock_quantity: 0,
+  min_stock_level: 10,
+  unit: "pcs",
+};
 
 export default function Inventory() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterCategory, setFilterCategory] = useState("all");
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<string | null>(null);
+  const [form, setForm] = useState<ProductForm>(initialForm);
+  
+  const queryClient = useQueryClient();
 
-  const categories = ["all", ...new Set(products.map((p) => p.category))];
+  const { data: products = [], isLoading } = useQuery({
+    queryKey: ["products"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("products")
+        .select(`*, categories (name)`)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
 
-  const filteredProducts = products.filter((product) => {
+  const { data: categories = [] } = useQuery({
+    queryKey: ["categories"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("categories")
+        .select("*")
+        .order("name");
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (product: ProductForm) => {
+      const { error } = await supabase.from("products").insert({
+        name: product.name,
+        sku: product.sku,
+        category_id: product.category_id || null,
+        price: product.price,
+        cost_price: product.cost_price,
+        stock_quantity: product.stock_quantity,
+        min_stock_level: product.min_stock_level,
+        unit: product.unit,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      toast.success("Product created successfully");
+      handleCloseDialog();
+    },
+    onError: (error) => {
+      toast.error("Failed to create product: " + error.message);
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, product }: { id: string; product: ProductForm }) => {
+      const { error } = await supabase.from("products").update({
+        name: product.name,
+        sku: product.sku,
+        category_id: product.category_id || null,
+        price: product.price,
+        cost_price: product.cost_price,
+        stock_quantity: product.stock_quantity,
+        min_stock_level: product.min_stock_level,
+        unit: product.unit,
+      }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      toast.success("Product updated successfully");
+      handleCloseDialog();
+    },
+    onError: (error) => {
+      toast.error("Failed to update product: " + error.message);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("products").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      toast.success("Product deleted successfully");
+    },
+    onError: (error) => {
+      toast.error("Failed to delete product: " + error.message);
+    },
+  });
+
+  const handleCloseDialog = () => {
+    setIsDialogOpen(false);
+    setEditingProduct(null);
+    setForm(initialForm);
+  };
+
+  const handleEdit = (product: any) => {
+    setEditingProduct(product.id);
+    setForm({
+      name: product.name,
+      sku: product.sku,
+      category_id: product.category_id,
+      price: Number(product.price),
+      cost_price: Number(product.cost_price),
+      stock_quantity: product.stock_quantity,
+      min_stock_level: product.min_stock_level,
+      unit: product.unit,
+    });
+    setIsDialogOpen(true);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editingProduct) {
+      updateMutation.mutate({ id: editingProduct, product: form });
+    } else {
+      createMutation.mutate(form);
+    }
+  };
+
+  const categoryNames = ["all", ...new Set(products.map((p: any) => p.categories?.name).filter(Boolean))];
+
+  const filteredProducts = products.filter((product: any) => {
     const matchesSearch =
       product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       product.sku.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory =
-      filterCategory === "all" || product.category === filterCategory;
+      filterCategory === "all" || product.categories?.name === filterCategory;
     return matchesSearch && matchesCategory;
   });
 
-  const getStatusBadge = (status: Product["status"]) => {
+  const getStatus = (product: any) => {
+    if (product.stock_quantity === 0) return "out-of-stock";
+    if (product.stock_quantity <= product.min_stock_level) return "low-stock";
+    return "in-stock";
+  };
+
+  const getStatusBadge = (status: string) => {
     switch (status) {
       case "in-stock":
         return <span className="badge-success">In Stock</span>;
@@ -50,6 +185,10 @@ export default function Inventory() {
         return <span className="badge-danger">Out of Stock</span>;
     }
   };
+
+  const inStockCount = products.filter((p: any) => getStatus(p) === "in-stock").length;
+  const lowStockCount = products.filter((p: any) => getStatus(p) === "low-stock").length;
+  const outOfStockCount = products.filter((p: any) => getStatus(p) === "out-of-stock").length;
 
   return (
     <DashboardLayout
@@ -76,9 +215,7 @@ export default function Inventory() {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">In Stock</p>
-              <p className="text-2xl font-bold text-foreground">
-                {products.filter((p) => p.status === "in-stock").length}
-              </p>
+              <p className="text-2xl font-bold text-foreground">{inStockCount}</p>
             </div>
           </div>
         </div>
@@ -89,9 +226,7 @@ export default function Inventory() {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Low Stock</p>
-              <p className="text-2xl font-bold text-foreground">
-                {products.filter((p) => p.status === "low-stock").length}
-              </p>
+              <p className="text-2xl font-bold text-foreground">{lowStockCount}</p>
             </div>
           </div>
         </div>
@@ -102,9 +237,7 @@ export default function Inventory() {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Out of Stock</p>
-              <p className="text-2xl font-bold text-foreground">
-                {products.filter((p) => p.status === "out-of-stock").length}
-              </p>
+              <p className="text-2xl font-bold text-foreground">{outOfStockCount}</p>
             </div>
           </div>
         </div>
@@ -132,7 +265,7 @@ export default function Inventory() {
                 onChange={(e) => setFilterCategory(e.target.value)}
                 className="input-field w-40"
               >
-                {categories.map((cat) => (
+                {categoryNames.map((cat) => (
                   <option key={cat} value={cat}>
                     {cat === "all" ? "All Categories" : cat}
                   </option>
@@ -140,65 +273,191 @@ export default function Inventory() {
               </select>
             </div>
           </div>
-          <button className="btn-primary">
+          <button className="btn-primary" onClick={() => setIsDialogOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Add Product
           </button>
         </div>
 
         {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Product</th>
-                <th>SKU</th>
-                <th>Category</th>
-                <th>Price</th>
-                <th>Cost</th>
-                <th>Stock</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredProducts.map((product) => (
-                <tr key={product.id}>
-                  <td>
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                        <Package className="h-5 w-5 text-primary" />
-                      </div>
-                      <span className="font-medium text-foreground">{product.name}</span>
-                    </div>
-                  </td>
-                  <td className="font-mono text-muted-foreground">{product.sku}</td>
-                  <td className="text-muted-foreground">{product.category}</td>
-                  <td className="font-medium text-foreground">${product.price.toFixed(2)}</td>
-                  <td className="text-muted-foreground">${product.cost.toFixed(2)}</td>
-                  <td>
-                    <span className={product.stock <= product.minStock ? "text-warning" : "text-foreground"}>
-                      {product.stock}
-                    </span>
-                    <span className="text-muted-foreground"> / {product.minStock} min</span>
-                  </td>
-                  <td>{getStatusBadge(product.status)}</td>
-                  <td>
-                    <div className="flex items-center gap-2">
-                      <button className="btn-ghost p-2">
-                        <Edit className="h-4 w-4" />
-                      </button>
-                      <button className="btn-ghost p-2 text-destructive hover:text-destructive">
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </td>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>SKU</th>
+                  <th>Category</th>
+                  <th>Price</th>
+                  <th>Cost</th>
+                  <th>Stock</th>
+                  <th>Status</th>
+                  <th>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {filteredProducts.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="text-center py-8 text-muted-foreground">
+                      No products found
+                    </td>
+                  </tr>
+                ) : (
+                  filteredProducts.map((product: any) => (
+                    <tr key={product.id}>
+                      <td>
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                            <Package className="h-5 w-5 text-primary" />
+                          </div>
+                          <span className="font-medium text-foreground">{product.name}</span>
+                        </div>
+                      </td>
+                      <td className="font-mono text-muted-foreground">{product.sku}</td>
+                      <td className="text-muted-foreground">{product.categories?.name || "-"}</td>
+                      <td className="font-medium text-foreground">${Number(product.price).toFixed(2)}</td>
+                      <td className="text-muted-foreground">${Number(product.cost_price).toFixed(2)}</td>
+                      <td>
+                        <span className={product.stock_quantity <= product.min_stock_level ? "text-warning" : "text-foreground"}>
+                          {product.stock_quantity}
+                        </span>
+                        <span className="text-muted-foreground"> / {product.min_stock_level} min</span>
+                      </td>
+                      <td>{getStatusBadge(getStatus(product))}</td>
+                      <td>
+                        <div className="flex items-center gap-2">
+                          <button className="btn-ghost p-2" onClick={() => handleEdit(product)}>
+                            <Edit className="h-4 w-4" />
+                          </button>
+                          <button 
+                            className="btn-ghost p-2 text-destructive hover:text-destructive"
+                            onClick={() => deleteMutation.mutate(product.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
+
+      {/* Add/Edit Dialog */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingProduct ? "Edit Product" : "Add Product"}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="text-sm font-medium text-muted-foreground">Name</label>
+              <input
+                type="text"
+                className="input-field mt-1"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                required
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-muted-foreground">SKU</label>
+              <input
+                type="text"
+                className="input-field mt-1"
+                value={form.sku}
+                onChange={(e) => setForm({ ...form, sku: e.target.value })}
+                required
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-muted-foreground">Category</label>
+              <select
+                className="input-field mt-1"
+                value={form.category_id || ""}
+                onChange={(e) => setForm({ ...form, category_id: e.target.value || null })}
+              >
+                <option value="">Select category</option>
+                {categories.map((cat: any) => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium text-muted-foreground">Price</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  className="input-field mt-1"
+                  value={form.price}
+                  onChange={(e) => setForm({ ...form, price: parseFloat(e.target.value) || 0 })}
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-muted-foreground">Cost Price</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  className="input-field mt-1"
+                  value={form.cost_price}
+                  onChange={(e) => setForm({ ...form, cost_price: parseFloat(e.target.value) || 0 })}
+                  required
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium text-muted-foreground">Stock Quantity</label>
+                <input
+                  type="number"
+                  className="input-field mt-1"
+                  value={form.stock_quantity}
+                  onChange={(e) => setForm({ ...form, stock_quantity: parseInt(e.target.value) || 0 })}
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-muted-foreground">Min Stock Level</label>
+                <input
+                  type="number"
+                  className="input-field mt-1"
+                  value={form.min_stock_level}
+                  onChange={(e) => setForm({ ...form, min_stock_level: parseInt(e.target.value) || 0 })}
+                  required
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-muted-foreground">Unit</label>
+              <input
+                type="text"
+                className="input-field mt-1"
+                value={form.unit}
+                onChange={(e) => setForm({ ...form, unit: e.target.value })}
+                required
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-4">
+              <button type="button" className="btn-ghost" onClick={handleCloseDialog}>
+                Cancel
+              </button>
+              <button type="submit" className="btn-primary" disabled={createMutation.isPending || updateMutation.isPending}>
+                {(createMutation.isPending || updateMutation.isPending) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {editingProduct ? "Update" : "Create"}
+              </button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }
