@@ -1,4 +1,3 @@
-import { forwardRef } from "react";
 import { Bell, Search, User, Menu } from "lucide-react";
 
 interface HeaderProps {
@@ -7,7 +6,7 @@ interface HeaderProps {
   onMenuClick?: () => void;
 }
 
-export const Header = forwardRef<HTMLElement, HeaderProps>(function Header({ title, subtitle, onMenuClick }, ref) {
+export function Header({ title, subtitle, onMenuClick }: HeaderProps) {
   return (
     <header className="sticky top-0 z-30 h-16 lg:h-20 bg-background/80 backdrop-blur-xl border-b border-border">
       <div className="flex h-full items-center justify-between px-4 lg:px-8">
@@ -69,4 +68,4 @@ export const Header = forwardRef<HTMLElement, HeaderProps>(function Header({ tit
       </div>
     </header>
   );
-});
+}
