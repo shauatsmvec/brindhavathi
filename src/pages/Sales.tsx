@@ -1,46 +1,43 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import { ShoppingCart, Plus, Search, Eye, Download, DollarSign, Receipt, TrendingUp } from "lucide-react";
-
-interface Invoice {
-  id: string;
-  customer: string;
-  email: string;
-  date: string;
-  items: number;
-  subtotal: number;
-  tax: number;
-  total: number;
-  status: "paid" | "pending" | "overdue";
-  paymentMethod: string;
-}
-
-const invoices: Invoice[] = [
-  { id: "INV-2024-001", customer: "John Smith", email: "john@email.com", date: "2024-01-15", items: 3, subtotal: 299.97, tax: 24.00, total: 323.97, status: "paid", paymentMethod: "Credit Card" },
-  { id: "INV-2024-002", customer: "Sarah Johnson", email: "sarah@email.com", date: "2024-01-15", items: 2, subtotal: 159.98, tax: 12.80, total: 172.78, status: "paid", paymentMethod: "PayPal" },
-  { id: "INV-2024-003", customer: "Mike Wilson", email: "mike@email.com", date: "2024-01-14", items: 5, subtotal: 489.95, tax: 39.20, total: 529.15, status: "pending", paymentMethod: "Bank Transfer" },
-  { id: "INV-2024-004", customer: "Emily Brown", email: "emily@email.com", date: "2024-01-14", items: 1, subtotal: 79.99, tax: 6.40, total: 86.39, status: "paid", paymentMethod: "Credit Card" },
-  { id: "INV-2024-005", customer: "David Lee", email: "david@email.com", date: "2024-01-13", items: 4, subtotal: 359.96, tax: 28.80, total: 388.76, status: "overdue", paymentMethod: "Credit Card" },
-  { id: "INV-2024-006", customer: "Lisa Anderson", email: "lisa@email.com", date: "2024-01-13", items: 2, subtotal: 199.98, tax: 16.00, total: 215.98, status: "paid", paymentMethod: "Cash" },
-];
+import { Plus, Search, Eye, Download, DollarSign, Receipt, TrendingUp, Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function Sales() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
+  const { data: invoices = [], isLoading } = useQuery({
+    queryKey: ["invoices"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("invoices")
+        .select(`
+          *,
+          customers (name, email)
+        `)
+        .order("created_at", { ascending: false });
+      
+      if (error) throw error;
+      return data;
+    },
+  });
+
   const filteredInvoices = invoices.filter((invoice) => {
+    const customerName = invoice.customers?.name || "";
     const matchesSearch =
-      invoice.customer.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      invoice.id.toLowerCase().includes(searchTerm.toLowerCase());
+      customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      invoice.invoice_number.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === "all" || invoice.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
-  const totalRevenue = invoices.filter((i) => i.status === "paid").reduce((sum, i) => sum + i.total, 0);
-  const pendingAmount = invoices.filter((i) => i.status === "pending").reduce((sum, i) => sum + i.total, 0);
-  const overdueAmount = invoices.filter((i) => i.status === "overdue").reduce((sum, i) => sum + i.total, 0);
+  const totalRevenue = invoices.filter((i) => i.status === "paid").reduce((sum, i) => sum + Number(i.total_amount), 0);
+  const pendingAmount = invoices.filter((i) => i.status === "pending").reduce((sum, i) => sum + Number(i.total_amount), 0);
+  const overdueAmount = invoices.filter((i) => i.status === "overdue").reduce((sum, i) => sum + Number(i.total_amount), 0);
 
-  const getStatusBadge = (status: Invoice["status"]) => {
+  const getStatusBadge = (status: string) => {
     switch (status) {
       case "paid":
         return <span className="badge-success">Paid</span>;
@@ -48,6 +45,8 @@ export default function Sales() {
         return <span className="badge-warning">Pending</span>;
       case "overdue":
         return <span className="badge-danger">Overdue</span>;
+      default:
+        return <span className="badge-secondary">{status}</span>;
     }
   };
 
@@ -135,50 +134,64 @@ export default function Sales() {
           </button>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Invoice</th>
-                <th>Customer</th>
-                <th>Date</th>
-                <th>Items</th>
-                <th>Total</th>
-                <th>Payment</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredInvoices.map((invoice) => (
-                <tr key={invoice.id}>
-                  <td className="font-mono font-medium text-primary">{invoice.id}</td>
-                  <td>
-                    <div>
-                      <p className="font-medium text-foreground">{invoice.customer}</p>
-                      <p className="text-sm text-muted-foreground">{invoice.email}</p>
-                    </div>
-                  </td>
-                  <td className="text-muted-foreground">{invoice.date}</td>
-                  <td className="text-muted-foreground">{invoice.items} items</td>
-                  <td className="font-semibold text-foreground">${invoice.total.toFixed(2)}</td>
-                  <td className="text-muted-foreground">{invoice.paymentMethod}</td>
-                  <td>{getStatusBadge(invoice.status)}</td>
-                  <td>
-                    <div className="flex items-center gap-2">
-                      <button className="btn-ghost p-2">
-                        <Eye className="h-4 w-4" />
-                      </button>
-                      <button className="btn-ghost p-2">
-                        <Download className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </td>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Invoice</th>
+                  <th>Customer</th>
+                  <th>Date</th>
+                  <th>Total</th>
+                  <th>Payment</th>
+                  <th>Status</th>
+                  <th>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {filteredInvoices.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="text-center py-8 text-muted-foreground">
+                      No invoices found
+                    </td>
+                  </tr>
+                ) : (
+                  filteredInvoices.map((invoice) => (
+                    <tr key={invoice.id}>
+                      <td className="font-mono font-medium text-primary">{invoice.invoice_number}</td>
+                      <td>
+                        <div>
+                          <p className="font-medium text-foreground">{invoice.customers?.name || "Unknown"}</p>
+                          <p className="text-sm text-muted-foreground">{invoice.customers?.email || ""}</p>
+                        </div>
+                      </td>
+                      <td className="text-muted-foreground">
+                        {new Date(invoice.created_at).toLocaleDateString()}
+                      </td>
+                      <td className="font-semibold text-foreground">${Number(invoice.total_amount).toFixed(2)}</td>
+                      <td className="text-muted-foreground capitalize">{invoice.payment_method}</td>
+                      <td>{getStatusBadge(invoice.status)}</td>
+                      <td>
+                        <div className="flex items-center gap-2">
+                          <button className="btn-ghost p-2">
+                            <Eye className="h-4 w-4" />
+                          </button>
+                          <button className="btn-ghost p-2">
+                            <Download className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </DashboardLayout>
   );

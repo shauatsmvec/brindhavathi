@@ -1,3 +1,4 @@
+import { forwardRef } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -29,7 +30,7 @@ interface MobileSidebarProps {
   onClose: () => void;
 }
 
-export function MobileSidebar({ isOpen, onClose }: MobileSidebarProps) {
+export const MobileSidebar = forwardRef<HTMLDivElement, MobileSidebarProps>(function MobileSidebar({ isOpen, onClose }, ref) {
   const location = useLocation();
 
   if (!isOpen) return null;
@@ -97,4 +98,4 @@ export function MobileSidebar({ isOpen, onClose }: MobileSidebarProps) {
       </aside>
     </>
   );
-}
+});
