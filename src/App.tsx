@@ -12,6 +12,7 @@ import Customers from "./pages/Customers";
 import Suppliers from "./pages/Suppliers";
 import Analytics from "./pages/Analytics";
 import Settings from "./pages/Settings";
+import PythonIntegration from "./pages/PythonIntegration";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,6 +33,7 @@ const App = () => (
           <Route path="/suppliers" element={<Suppliers />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/python" element={<PythonIntegration />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

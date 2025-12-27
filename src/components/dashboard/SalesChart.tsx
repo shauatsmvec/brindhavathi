@@ -1,6 +1,6 @@
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import {
-  LineChart,
-  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -9,18 +9,58 @@ import {
   Area,
   AreaChart,
 } from "recharts";
-
-const data = [
-  { name: "Mon", sales: 4200, orders: 42 },
-  { name: "Tue", sales: 3800, orders: 38 },
-  { name: "Wed", sales: 5100, orders: 51 },
-  { name: "Thu", sales: 4600, orders: 46 },
-  { name: "Fri", sales: 6200, orders: 62 },
-  { name: "Sat", sales: 7800, orders: 78 },
-  { name: "Sun", sales: 5400, orders: 54 },
-];
+import { format, subDays, startOfDay, endOfDay } from "date-fns";
 
 export function SalesChart() {
+  const { data: salesData = [], isLoading } = useQuery({
+    queryKey: ["sales-chart"],
+    queryFn: async () => {
+      const last7Days = Array.from({ length: 7 }, (_, i) => {
+        const date = subDays(new Date(), 6 - i);
+        return {
+          date: format(date, "yyyy-MM-dd"),
+          name: format(date, "EEE"),
+          start: startOfDay(date).toISOString(),
+          end: endOfDay(date).toISOString(),
+        };
+      });
+
+      const results = await Promise.all(
+        last7Days.map(async (day) => {
+          const { data: invoices } = await supabase
+            .from("invoices")
+            .select("total_amount")
+            .gte("created_at", day.start)
+            .lte("created_at", day.end)
+            .eq("status", "paid");
+
+          const sales = invoices?.reduce((sum, inv) => sum + Number(inv.total_amount || 0), 0) || 0;
+
+          return {
+            name: day.name,
+            sales,
+          };
+        })
+      );
+
+      return results;
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <div className="chart-container animate-slide-up" style={{ animationDelay: "200ms" }}>
+        <div className="mb-6">
+          <h3 className="text-lg font-semibold text-foreground">Sales Overview</h3>
+          <p className="text-sm text-muted-foreground">Weekly sales performance</p>
+        </div>
+        <div className="h-80 flex items-center justify-center">
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="chart-container animate-slide-up" style={{ animationDelay: "200ms" }}>
       <div className="mb-6 flex items-center justify-between">
@@ -37,7 +77,7 @@ export function SalesChart() {
       </div>
       <div className="h-80">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data}>
+          <AreaChart data={salesData}>
             <defs>
               <linearGradient id="salesGradient" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="hsl(160 84% 39%)" stopOpacity={0.3} />
@@ -55,7 +95,7 @@ export function SalesChart() {
               axisLine={false}
               tickLine={false}
               tick={{ fill: "hsl(215 20% 55%)", fontSize: 12 }}
-              tickFormatter={(value) => `$${value / 1000}k`}
+              tickFormatter={(value) => `$${value >= 1000 ? `${(value / 1000).toFixed(1)}k` : value}`}
             />
             <Tooltip
               contentStyle={{

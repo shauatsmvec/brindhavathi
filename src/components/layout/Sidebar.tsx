@@ -10,6 +10,7 @@ import {
   Wallet,
   Settings,
   TrendingUp,
+  Code,
 } from "lucide-react";
 
 const navigation = [
@@ -21,6 +22,7 @@ const navigation = [
   { name: "Customers", href: "/customers", icon: Users },
   { name: "Suppliers", href: "/suppliers", icon: Receipt },
   { name: "Analytics", href: "/analytics", icon: BarChart3 },
+  { name: "Python", href: "/python", icon: Code },
 ];
 
 export function Sidebar() {
