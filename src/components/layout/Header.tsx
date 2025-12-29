@@ -1,7 +1,9 @@
 import { useState } from "react";
-import { Bell, Search, User, Menu } from "lucide-react";
+import { Bell, Search, User, Menu, LogOut } from "lucide-react";
 import { SearchModal } from "./SearchModal";
 import { NotificationsDropdown } from "./NotificationsDropdown";
+import { useAuth } from "@/hooks/useAuth";
+import { useNavigate } from "react-router-dom";
 
 interface HeaderProps {
   title: string;
@@ -11,6 +13,13 @@ interface HeaderProps {
 
 export function Header({ title, subtitle, onMenuClick }: HeaderProps) {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/auth");
+  };
 
   return (
     <>
@@ -61,15 +70,22 @@ export function Header({ title, subtitle, onMenuClick }: HeaderProps) {
             <NotificationsDropdown />
 
             {/* User */}
-            <button className="flex items-center gap-2 lg:gap-3 rounded-lg bg-muted/50 p-2 lg:px-3 lg:py-2 transition-colors hover:bg-muted">
+            <div className="flex items-center gap-2 lg:gap-3 rounded-lg bg-muted/50 p-2 lg:px-3 lg:py-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary">
                 <User className="h-4 w-4 text-primary-foreground" />
               </div>
               <div className="hidden text-left lg:block">
-                <p className="text-sm font-medium text-foreground">Admin User</p>
-                <p className="text-xs text-muted-foreground">Store Manager</p>
+                <p className="text-sm font-medium text-foreground">{user?.email?.split("@")[0] || "User"}</p>
+                <p className="text-xs text-muted-foreground">{user?.email || ""}</p>
               </div>
-            </button>
+              <button
+                onClick={handleSignOut}
+                className="ml-2 p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                title="Sign out"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         </div>
       </header>

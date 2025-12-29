@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import { Truck, Plus, Search, Eye, CheckCircle, Clock, Package, Loader2 } from "lucide-react";
+import { Truck, Plus, Search, Eye, CheckCircle, Clock, Package, Loader2, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
@@ -18,6 +18,12 @@ interface PurchaseOrderForm {
   notes: string;
 }
 
+interface OrderItemForm {
+  product_id: string;
+  quantity: number;
+  unit_cost: number;
+}
+
 const initialForm: PurchaseOrderForm = {
   supplier_id: "",
   expected_delivery: "",
@@ -28,7 +34,10 @@ const initialForm: PurchaseOrderForm = {
 export default function Procurement() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isItemsDialogOpen, setIsItemsDialogOpen] = useState(false);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [form, setForm] = useState<PurchaseOrderForm>(initialForm);
+  const [orderItems, setOrderItems] = useState<OrderItemForm[]>([{ product_id: "", quantity: 1, unit_cost: 0 }]);
 
   const queryClient = useQueryClient();
 
@@ -57,6 +66,18 @@ export default function Procurement() {
     },
   });
 
+  const { data: products = [] } = useQuery({
+    queryKey: ["products"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("products")
+        .select("*")
+        .order("name");
+      if (error) throw error;
+      return data;
+    },
+  });
+
   const generatePONumber = () => {
     const year = new Date().getFullYear();
     const random = Math.floor(Math.random() * 1000).toString().padStart(3, "0");
@@ -65,18 +86,46 @@ export default function Procurement() {
 
   const createMutation = useMutation({
     mutationFn: async (order: PurchaseOrderForm) => {
-      const { error } = await supabase.from("purchase_orders").insert({
-        po_number: generatePONumber(),
-        supplier_id: order.supplier_id,
-        expected_delivery: order.expected_delivery || null,
-        status: order.status,
-        notes: order.notes || null,
-        total_amount: 0,
-      });
-      if (error) throw error;
+      // Calculate total amount
+      const totalAmount = orderItems.reduce((sum, item) => sum + (item.quantity * item.unit_cost), 0);
+      
+      // Create purchase order
+      const { data: poData, error: poError } = await supabase
+        .from("purchase_orders")
+        .insert({
+          po_number: generatePONumber(),
+          supplier_id: order.supplier_id,
+          expected_delivery: order.expected_delivery || null,
+          status: order.status,
+          notes: order.notes || null,
+          total_amount: totalAmount,
+        })
+        .select()
+        .single();
+      
+      if (poError) throw poError;
+
+      // Create order items
+      const itemsToInsert = orderItems
+        .filter(item => item.product_id && item.quantity > 0)
+        .map(item => ({
+          purchase_order_id: poData.id,
+          product_id: item.product_id,
+          quantity: item.quantity,
+          unit_cost: item.unit_cost,
+          total_cost: item.quantity * item.unit_cost,
+        }));
+
+      if (itemsToInsert.length > 0) {
+        const { error: itemsError } = await supabase
+          .from("purchase_order_items")
+          .insert(itemsToInsert);
+        if (itemsError) throw itemsError;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["purchase_orders"] });
+      queryClient.invalidateQueries({ queryKey: ["suppliers"] });
       toast.success("Purchase order created successfully");
       handleCloseDialog();
     },
@@ -87,11 +136,44 @@ export default function Procurement() {
 
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      const { error } = await supabase.from("purchase_orders").update({ status }).eq("id", id);
+      const { error } = await supabase
+        .from("purchase_orders")
+        .update({ status })
+        .eq("id", id);
       if (error) throw error;
+
+      // If delivered, update inventory stock levels
+      if (status === "delivered") {
+        const { data: items, error: itemsError } = await supabase
+          .from("purchase_order_items")
+          .select("*")
+          .eq("purchase_order_id", id);
+        
+        if (itemsError) throw itemsError;
+
+        // Update each product's stock quantity
+        for (const item of items || []) {
+          const { data: product } = await supabase
+            .from("products")
+            .select("stock_quantity")
+            .eq("id", item.product_id)
+            .single();
+
+          if (product) {
+            await supabase
+              .from("products")
+              .update({ 
+                stock_quantity: product.stock_quantity + item.quantity 
+              })
+              .eq("id", item.product_id);
+          }
+        }
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["purchase_orders"] });
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      queryClient.invalidateQueries({ queryKey: ["suppliers"] });
       toast.success("Status updated successfully");
     },
     onError: (error) => {
@@ -102,11 +184,39 @@ export default function Procurement() {
   const handleCloseDialog = () => {
     setIsDialogOpen(false);
     setForm(initialForm);
+    setOrderItems([{ product_id: "", quantity: 1, unit_cost: 0 }]);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (orderItems.filter(item => item.product_id).length === 0) {
+      toast.error("Please add at least one product to the order");
+      return;
+    }
     createMutation.mutate(form);
+  };
+
+  const addOrderItem = () => {
+    setOrderItems([...orderItems, { product_id: "", quantity: 1, unit_cost: 0 }]);
+  };
+
+  const removeOrderItem = (index: number) => {
+    setOrderItems(orderItems.filter((_, i) => i !== index));
+  };
+
+  const updateOrderItem = (index: number, field: keyof OrderItemForm, value: any) => {
+    const updated = [...orderItems];
+    updated[index] = { ...updated[index], [field]: value };
+    
+    // Auto-fill unit cost from product cost_price
+    if (field === "product_id" && value) {
+      const product = products.find((p: any) => p.id === value);
+      if (product) {
+        updated[index].unit_cost = Number(product.cost_price);
+      }
+    }
+    
+    setOrderItems(updated);
   };
 
   const filteredOrders = purchaseOrders.filter((order: any) =>
@@ -144,6 +254,8 @@ export default function Procurement() {
     orders: supplier.total_orders || 0,
     rating: supplier.rating || 5,
   }));
+
+  const orderItemsTotal = orderItems.reduce((sum, item) => sum + (item.quantity * item.unit_cost), 0);
 
   return (
     <DashboardLayout
@@ -309,54 +421,128 @@ export default function Procurement() {
 
       {/* Create Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Create Purchase Order</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium text-muted-foreground">Supplier *</label>
+                <select
+                  className="input-field mt-1"
+                  value={form.supplier_id}
+                  onChange={(e) => setForm({ ...form, supplier_id: e.target.value })}
+                  required
+                >
+                  <option value="">Select supplier</option>
+                  {suppliers.map((supplier: any) => (
+                    <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-muted-foreground">Expected Delivery</label>
+                <input
+                  type="date"
+                  className="input-field mt-1"
+                  value={form.expected_delivery}
+                  onChange={(e) => setForm({ ...form, expected_delivery: e.target.value })}
+                />
+              </div>
+            </div>
+
             <div>
-              <label className="text-sm font-medium text-muted-foreground">Supplier *</label>
-              <select
-                className="input-field mt-1"
-                value={form.supplier_id}
-                onChange={(e) => setForm({ ...form, supplier_id: e.target.value })}
-                required
-              >
-                <option value="">Select supplier</option>
-                {suppliers.map((supplier: any) => (
-                  <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm font-medium text-muted-foreground">Products *</label>
+                <button type="button" className="btn-ghost text-sm" onClick={addOrderItem}>
+                  <Plus className="h-4 w-4 mr-1" /> Add Product
+                </button>
+              </div>
+              <div className="space-y-3">
+                {orderItems.map((item, index) => (
+                  <div key={index} className="flex gap-2 items-end">
+                    <div className="flex-1">
+                      <select
+                        className="input-field"
+                        value={item.product_id}
+                        onChange={(e) => updateOrderItem(index, "product_id", e.target.value)}
+                      >
+                        <option value="">Select product</option>
+                        {products.map((product: any) => (
+                          <option key={product.id} value={product.id}>
+                            {product.name} ({product.sku})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="w-24">
+                      <input
+                        type="number"
+                        min="1"
+                        className="input-field"
+                        placeholder="Qty"
+                        value={item.quantity}
+                        onChange={(e) => updateOrderItem(index, "quantity", parseInt(e.target.value) || 0)}
+                      />
+                    </div>
+                    <div className="w-28">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        className="input-field"
+                        placeholder="Unit Cost"
+                        value={item.unit_cost}
+                        onChange={(e) => updateOrderItem(index, "unit_cost", parseFloat(e.target.value) || 0)}
+                      />
+                    </div>
+                    <div className="w-24 text-right font-medium text-foreground">
+                      ${(item.quantity * item.unit_cost).toFixed(2)}
+                    </div>
+                    {orderItems.length > 1 && (
+                      <button
+                        type="button"
+                        className="btn-ghost p-2 text-destructive"
+                        onClick={() => removeOrderItem(index)}
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
                 ))}
-              </select>
+              </div>
+              <div className="mt-3 pt-3 border-t border-border flex justify-end">
+                <span className="text-lg font-semibold text-foreground">
+                  Total: ${orderItemsTotal.toFixed(2)}
+                </span>
+              </div>
             </div>
-            <div>
-              <label className="text-sm font-medium text-muted-foreground">Expected Delivery</label>
-              <input
-                type="date"
-                className="input-field mt-1"
-                value={form.expected_delivery}
-                onChange={(e) => setForm({ ...form, expected_delivery: e.target.value })}
-              />
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium text-muted-foreground">Status</label>
+                <select
+                  className="input-field mt-1"
+                  value={form.status}
+                  onChange={(e) => setForm({ ...form, status: e.target.value })}
+                >
+                  <option value="pending">Pending</option>
+                  <option value="confirmed">Confirmed</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-muted-foreground">Notes</label>
+                <input
+                  type="text"
+                  className="input-field mt-1"
+                  value={form.notes}
+                  onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                  placeholder="Optional notes"
+                />
+              </div>
             </div>
-            <div>
-              <label className="text-sm font-medium text-muted-foreground">Status</label>
-              <select
-                className="input-field mt-1"
-                value={form.status}
-                onChange={(e) => setForm({ ...form, status: e.target.value })}
-              >
-                <option value="pending">Pending</option>
-                <option value="confirmed">Confirmed</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-muted-foreground">Notes</label>
-              <textarea
-                className="input-field mt-1"
-                value={form.notes}
-                onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                rows={2}
-              />
-            </div>
+
             <div className="flex justify-end gap-2 pt-4">
               <button type="button" className="btn-ghost" onClick={handleCloseDialog}>
                 Cancel
