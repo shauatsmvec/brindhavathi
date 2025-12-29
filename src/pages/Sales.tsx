@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import { Plus, Search, Eye, Download, DollarSign, Receipt, TrendingUp, Loader2, X } from "lucide-react";
+import { Plus, Search, Eye, Download, DollarSign, Receipt, TrendingUp, Loader2, X, Package } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
@@ -16,9 +16,12 @@ interface InvoiceForm {
   status: string;
   payment_method: string;
   notes: string;
-  subtotal: number;
-  tax_amount: number;
-  discount_amount: number;
+}
+
+interface InvoiceItemForm {
+  product_id: string;
+  quantity: number;
+  unit_price: number;
 }
 
 const initialForm: InvoiceForm = {
@@ -26,9 +29,6 @@ const initialForm: InvoiceForm = {
   status: "pending",
   payment_method: "cash",
   notes: "",
-  subtotal: 0,
-  tax_amount: 0,
-  discount_amount: 0,
 };
 
 export default function Sales() {
@@ -36,6 +36,9 @@ export default function Sales() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [form, setForm] = useState<InvoiceForm>(initialForm);
+  const [invoiceItems, setInvoiceItems] = useState<InvoiceItemForm[]>([{ product_id: "", quantity: 1, unit_price: 0 }]);
+  const [taxRate, setTaxRate] = useState(0);
+  const [discountAmount, setDiscountAmount] = useState(0);
 
   const queryClient = useQueryClient();
 
@@ -67,6 +70,19 @@ export default function Sales() {
     },
   });
 
+  const { data: products = [] } = useQuery({
+    queryKey: ["products"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("products")
+        .select("*")
+        .gt("stock_quantity", 0)
+        .order("name");
+      if (error) throw error;
+      return data;
+    },
+  });
+
   const generateInvoiceNumber = () => {
     const year = new Date().getFullYear();
     const random = Math.floor(Math.random() * 1000).toString().padStart(3, "0");
@@ -75,22 +91,87 @@ export default function Sales() {
 
   const createMutation = useMutation({
     mutationFn: async (invoice: InvoiceForm) => {
-      const total = invoice.subtotal + invoice.tax_amount - invoice.discount_amount;
-      const { error } = await supabase.from("invoices").insert({
-        invoice_number: generateInvoiceNumber(),
-        customer_id: invoice.customer_id || null,
-        status: invoice.status,
-        payment_method: invoice.payment_method,
-        notes: invoice.notes || null,
-        subtotal: invoice.subtotal,
-        tax_amount: invoice.tax_amount,
-        discount_amount: invoice.discount_amount,
-        total_amount: total,
-      });
-      if (error) throw error;
+      const subtotal = invoiceItems.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
+      const taxAmount = subtotal * (taxRate / 100);
+      const total = subtotal + taxAmount - discountAmount;
+
+      // Create invoice
+      const { data: invoiceData, error: invoiceError } = await supabase
+        .from("invoices")
+        .insert({
+          invoice_number: generateInvoiceNumber(),
+          customer_id: invoice.customer_id || null,
+          status: invoice.status,
+          payment_method: invoice.payment_method,
+          notes: invoice.notes || null,
+          subtotal,
+          tax_amount: taxAmount,
+          discount_amount: discountAmount,
+          total_amount: total,
+        })
+        .select()
+        .single();
+      
+      if (invoiceError) throw invoiceError;
+
+      // Create invoice items
+      const itemsToInsert = invoiceItems
+        .filter(item => item.product_id && item.quantity > 0)
+        .map(item => ({
+          invoice_id: invoiceData.id,
+          product_id: item.product_id,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          total_price: item.quantity * item.unit_price,
+        }));
+
+      if (itemsToInsert.length > 0) {
+        const { error: itemsError } = await supabase
+          .from("invoice_items")
+          .insert(itemsToInsert);
+        if (itemsError) throw itemsError;
+
+        // Deduct stock from inventory
+        for (const item of invoiceItems.filter(i => i.product_id && i.quantity > 0)) {
+          const { data: product } = await supabase
+            .from("products")
+            .select("stock_quantity")
+            .eq("id", item.product_id)
+            .single();
+
+          if (product) {
+            const newStock = Math.max(0, product.stock_quantity - item.quantity);
+            await supabase
+              .from("products")
+              .update({ stock_quantity: newStock })
+              .eq("id", item.product_id);
+          }
+        }
+      }
+
+      // Update customer stats if customer is selected
+      if (invoice.customer_id) {
+        const { data: customer } = await supabase
+          .from("customers")
+          .select("total_orders, total_spent")
+          .eq("id", invoice.customer_id)
+          .single();
+
+        if (customer) {
+          await supabase
+            .from("customers")
+            .update({
+              total_orders: customer.total_orders + 1,
+              total_spent: Number(customer.total_spent) + total,
+            })
+            .eq("id", invoice.customer_id);
+        }
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
       toast.success("Invoice created successfully");
       handleCloseDialog();
     },
@@ -116,11 +197,46 @@ export default function Sales() {
   const handleCloseDialog = () => {
     setIsDialogOpen(false);
     setForm(initialForm);
+    setInvoiceItems([{ product_id: "", quantity: 1, unit_price: 0 }]);
+    setTaxRate(0);
+    setDiscountAmount(0);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (invoiceItems.filter(item => item.product_id).length === 0) {
+      toast.error("Please add at least one product to the invoice");
+      return;
+    }
     createMutation.mutate(form);
+  };
+
+  const addInvoiceItem = () => {
+    setInvoiceItems([...invoiceItems, { product_id: "", quantity: 1, unit_price: 0 }]);
+  };
+
+  const removeInvoiceItem = (index: number) => {
+    setInvoiceItems(invoiceItems.filter((_, i) => i !== index));
+  };
+
+  const updateInvoiceItem = (index: number, field: keyof InvoiceItemForm, value: any) => {
+    const updated = [...invoiceItems];
+    updated[index] = { ...updated[index], [field]: value };
+    
+    // Auto-fill unit price from product price
+    if (field === "product_id" && value) {
+      const product = products.find((p: any) => p.id === value);
+      if (product) {
+        updated[index].unit_price = Number(product.price);
+      }
+    }
+    
+    setInvoiceItems(updated);
+  };
+
+  const getProductStock = (productId: string) => {
+    const product = products.find((p: any) => p.id === productId);
+    return product?.stock_quantity || 0;
   };
 
   const filteredInvoices = invoices.filter((invoice: any) => {
@@ -148,6 +264,10 @@ export default function Sales() {
         return <span className="badge-secondary">{status}</span>;
     }
   };
+
+  const subtotal = invoiceItems.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
+  const taxAmount = subtotal * (taxRate / 100);
+  const total = subtotal + taxAmount - discountAmount;
 
   return (
     <DashboardLayout
@@ -305,69 +425,25 @@ export default function Sales() {
 
       {/* Create Invoice Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Create Invoice</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="text-sm font-medium text-muted-foreground">Customer</label>
-              <select
-                className="input-field mt-1"
-                value={form.customer_id}
-                onChange={(e) => setForm({ ...form, customer_id: e.target.value })}
-              >
-                <option value="">Walk-in Customer</option>
-                {customers.map((customer: any) => (
-                  <option key={customer.id} value={customer.id}>{customer.name}</option>
-                ))}
-              </select>
-            </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-sm font-medium text-muted-foreground">Subtotal *</label>
-                <input
-                  type="number"
-                  step="0.01"
+                <label className="text-sm font-medium text-muted-foreground">Customer</label>
+                <select
                   className="input-field mt-1"
-                  value={form.subtotal}
-                  onChange={(e) => setForm({ ...form, subtotal: parseFloat(e.target.value) || 0 })}
-                  required
-                />
+                  value={form.customer_id}
+                  onChange={(e) => setForm({ ...form, customer_id: e.target.value })}
+                >
+                  <option value="">Walk-in Customer</option>
+                  {customers.map((customer: any) => (
+                    <option key={customer.id} value={customer.id}>{customer.name}</option>
+                  ))}
+                </select>
               </div>
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">Tax</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  className="input-field mt-1"
-                  value={form.tax_amount}
-                  onChange={(e) => setForm({ ...form, tax_amount: parseFloat(e.target.value) || 0 })}
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">Discount</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  className="input-field mt-1"
-                  value={form.discount_amount}
-                  onChange={(e) => setForm({ ...form, discount_amount: parseFloat(e.target.value) || 0 })}
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">Total</label>
-                <input
-                  type="text"
-                  className="input-field mt-1 bg-muted"
-                  value={`$${(form.subtotal + form.tax_amount - form.discount_amount).toFixed(2)}`}
-                  readOnly
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-sm font-medium text-muted-foreground">Payment Method</label>
                 <select
@@ -381,6 +457,95 @@ export default function Sales() {
                   <option value="paypal">PayPal</option>
                 </select>
               </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm font-medium text-muted-foreground">Products *</label>
+                <button type="button" className="btn-ghost text-sm" onClick={addInvoiceItem}>
+                  <Plus className="h-4 w-4 mr-1" /> Add Product
+                </button>
+              </div>
+              <div className="space-y-3">
+                {invoiceItems.map((item, index) => (
+                  <div key={index} className="flex gap-2 items-end">
+                    <div className="flex-1">
+                      <select
+                        className="input-field"
+                        value={item.product_id}
+                        onChange={(e) => updateInvoiceItem(index, "product_id", e.target.value)}
+                      >
+                        <option value="">Select product</option>
+                        {products.map((product: any) => (
+                          <option key={product.id} value={product.id}>
+                            {product.name} - ${Number(product.price).toFixed(2)} (Stock: {product.stock_quantity})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="w-20">
+                      <input
+                        type="number"
+                        min="1"
+                        max={item.product_id ? getProductStock(item.product_id) : 999}
+                        className="input-field"
+                        placeholder="Qty"
+                        value={item.quantity}
+                        onChange={(e) => updateInvoiceItem(index, "quantity", parseInt(e.target.value) || 0)}
+                      />
+                    </div>
+                    <div className="w-28">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        className="input-field"
+                        placeholder="Price"
+                        value={item.unit_price}
+                        onChange={(e) => updateInvoiceItem(index, "unit_price", parseFloat(e.target.value) || 0)}
+                      />
+                    </div>
+                    <div className="w-24 text-right font-medium text-foreground">
+                      ${(item.quantity * item.unit_price).toFixed(2)}
+                    </div>
+                    {invoiceItems.length > 1 && (
+                      <button
+                        type="button"
+                        className="btn-ghost p-2 text-destructive"
+                        onClick={() => removeInvoiceItem(index)}
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="text-sm font-medium text-muted-foreground">Tax Rate (%)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max="100"
+                  className="input-field mt-1"
+                  value={taxRate}
+                  onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-muted-foreground">Discount ($)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="input-field mt-1"
+                  value={discountAmount}
+                  onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
+                />
+              </div>
               <div>
                 <label className="text-sm font-medium text-muted-foreground">Status</label>
                 <select
@@ -393,6 +558,26 @@ export default function Sales() {
                 </select>
               </div>
             </div>
+
+            <div className="bg-muted/30 rounded-lg p-4 space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Subtotal</span>
+                <span className="text-foreground">${subtotal.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Tax ({taxRate}%)</span>
+                <span className="text-foreground">${taxAmount.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Discount</span>
+                <span className="text-foreground">-${discountAmount.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-lg font-bold border-t border-border pt-2">
+                <span className="text-foreground">Total</span>
+                <span className="text-primary">${total.toFixed(2)}</span>
+              </div>
+            </div>
+
             <div>
               <label className="text-sm font-medium text-muted-foreground">Notes</label>
               <textarea
@@ -400,8 +585,10 @@ export default function Sales() {
                 value={form.notes}
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
                 rows={2}
+                placeholder="Optional notes"
               />
             </div>
+
             <div className="flex justify-end gap-2 pt-4">
               <button type="button" className="btn-ghost" onClick={handleCloseDialog}>
                 Cancel
