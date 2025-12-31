@@ -4,6 +4,7 @@ import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Package, Plus, Search, Filter, Edit, Trash2, X, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
 import {
   Dialog,
   DialogContent,
@@ -34,6 +35,7 @@ const initialForm: ProductForm = {
 };
 
 export default function Inventory() {
+  const { isAdmin } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [filterCategory, setFilterCategory] = useState("all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -273,10 +275,12 @@ export default function Inventory() {
               </select>
             </div>
           </div>
-          <button className="btn-primary" onClick={() => setIsDialogOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Product
-          </button>
+          {isAdmin && (
+            <button className="btn-primary" onClick={() => setIsDialogOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Product
+            </button>
+          )}
         </div>
 
         {/* Table */}
@@ -296,7 +300,7 @@ export default function Inventory() {
                   <th>Cost</th>
                   <th>Stock</th>
                   <th>Status</th>
-                  <th>Actions</th>
+                  {isAdmin && <th>Actions</th>}
                 </tr>
               </thead>
               <tbody>
@@ -328,19 +332,21 @@ export default function Inventory() {
                         <span className="text-muted-foreground"> / {product.min_stock_level} min</span>
                       </td>
                       <td>{getStatusBadge(getStatus(product))}</td>
-                      <td>
-                        <div className="flex items-center gap-2">
-                          <button className="btn-ghost p-2" onClick={() => handleEdit(product)}>
-                            <Edit className="h-4 w-4" />
-                          </button>
-                          <button 
-                            className="btn-ghost p-2 text-destructive hover:text-destructive"
-                            onClick={() => deleteMutation.mutate(product.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </td>
+                      {isAdmin && (
+                        <td>
+                          <div className="flex items-center gap-2">
+                            <button className="btn-ghost p-2" onClick={() => handleEdit(product)}>
+                              <Edit className="h-4 w-4" />
+                            </button>
+                            <button 
+                              className="btn-ghost p-2 text-destructive hover:text-destructive"
+                              onClick={() => deleteMutation.mutate(product.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))
                 )}

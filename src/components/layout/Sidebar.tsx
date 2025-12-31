@@ -1,4 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
 import {
   LayoutDashboard,
   Package,
@@ -11,27 +12,31 @@ import {
   Settings,
   TrendingUp,
   Code,
+  User,
 } from "lucide-react";
-
-const navigation = [
-  { name: "Dashboard", href: "/", icon: LayoutDashboard },
-  { name: "Inventory", href: "/inventory", icon: Package },
-  { name: "Sales & Billing", href: "/sales", icon: ShoppingCart },
-  { name: "Procurement", href: "/procurement", icon: Truck },
-  { name: "Expenses", href: "/expenses", icon: Wallet },
-  { name: "Customers", href: "/customers", icon: Users },
-  { name: "Suppliers", href: "/suppliers", icon: Receipt },
-  { name: "Analytics", href: "/analytics", icon: BarChart3 },
-  { name: "Python", href: "/python", icon: Code },
-];
 
 export function Sidebar() {
   const location = useLocation();
+  const { isAdmin } = useAuth();
+
+  const navigation = [
+    { name: "Dashboard", href: "/", icon: LayoutDashboard, adminOnly: false },
+    { name: "Inventory", href: "/inventory", icon: Package, adminOnly: false },
+    { name: "Sales & Billing", href: "/sales", icon: ShoppingCart, adminOnly: false },
+    { name: "Procurement", href: "/procurement", icon: Truck, adminOnly: true },
+    { name: "Expenses", href: "/expenses", icon: Wallet, adminOnly: true },
+    { name: "Customers", href: "/customers", icon: Users, adminOnly: false },
+    { name: "Suppliers", href: "/suppliers", icon: Receipt, adminOnly: false },
+    { name: "Analytics", href: "/analytics", icon: BarChart3, adminOnly: false },
+    { name: "My Profile", href: "/profile", icon: User, adminOnly: false },
+    { name: "Python", href: "/python", icon: Code, adminOnly: false },
+  ];
+
+  const filteredNavigation = navigation.filter(item => !item.adminOnly || isAdmin);
 
   return (
     <aside className="fixed left-0 top-0 z-40 h-screen w-64 bg-sidebar border-r border-sidebar-border hidden lg:block">
       <div className="flex h-full flex-col">
-        {/* Logo */}
         <div className="flex h-20 items-center gap-3 border-b border-sidebar-border px-6">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
             <TrendingUp className="h-5 w-5 text-primary-foreground" />
@@ -42,9 +47,8 @@ export function Sidebar() {
           </div>
         </div>
 
-        {/* Navigation */}
         <nav className="flex-1 space-y-1 px-3 py-6 overflow-y-auto scrollbar-thin">
-          {navigation.map((item) => {
+          {filteredNavigation.map((item) => {
             const isActive = location.pathname === item.href;
             return (
               <Link
@@ -59,16 +63,14 @@ export function Sidebar() {
           })}
         </nav>
 
-        {/* Footer */}
-        <div className="border-t border-sidebar-border p-4">
-          <Link
-            to="/settings"
-            className="nav-link"
-          >
-            <Settings className="h-5 w-5" />
-            Settings
-          </Link>
-        </div>
+        {isAdmin && (
+          <div className="border-t border-sidebar-border p-4">
+            <Link to="/settings" className="nav-link">
+              <Settings className="h-5 w-5" />
+              Settings
+            </Link>
+          </div>
+        )}
       </div>
     </aside>
   );

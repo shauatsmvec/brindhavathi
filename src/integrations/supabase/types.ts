@@ -234,6 +234,42 @@ export type Database = {
           },
         ]
       }
+      notification_preferences: {
+        Row: {
+          created_at: string
+          daily_summary_reports: boolean
+          id: string
+          low_stock_alerts: boolean
+          new_order_notifications: boolean
+          payment_confirmations: boolean
+          updated_at: string
+          user_id: string
+          weekly_analytics_digest: boolean
+        }
+        Insert: {
+          created_at?: string
+          daily_summary_reports?: boolean
+          id?: string
+          low_stock_alerts?: boolean
+          new_order_notifications?: boolean
+          payment_confirmations?: boolean
+          updated_at?: string
+          user_id: string
+          weekly_analytics_digest?: boolean
+        }
+        Update: {
+          created_at?: string
+          daily_summary_reports?: boolean
+          id?: string
+          low_stock_alerts?: boolean
+          new_order_notifications?: boolean
+          payment_confirmations?: boolean
+          updated_at?: string
+          user_id?: string
+          weekly_analytics_digest?: boolean
+        }
+        Relationships: []
+      }
       products: {
         Row: {
           category_id: string | null
@@ -294,7 +330,11 @@ export type Database = {
           full_name: string | null
           id: string
           security_answer: string | null
+          security_answer_2: string | null
+          security_answer_3: string | null
           security_question: string | null
+          security_question_2: string | null
+          security_question_3: string | null
           updated_at: string
         }
         Insert: {
@@ -303,7 +343,11 @@ export type Database = {
           full_name?: string | null
           id: string
           security_answer?: string | null
+          security_answer_2?: string | null
+          security_answer_3?: string | null
           security_question?: string | null
+          security_question_2?: string | null
+          security_question_3?: string | null
           updated_at?: string
         }
         Update: {
@@ -312,7 +356,11 @@ export type Database = {
           full_name?: string | null
           id?: string
           security_answer?: string | null
+          security_answer_2?: string | null
+          security_answer_3?: string | null
           security_question?: string | null
+          security_question_2?: string | null
+          security_question_3?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -406,6 +454,33 @@ export type Database = {
           },
         ]
       }
+      store_settings: {
+        Row: {
+          created_at: string
+          id: string
+          store_address: string | null
+          store_email: string | null
+          store_name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          store_address?: string | null
+          store_email?: string | null
+          store_name?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          store_address?: string | null
+          store_email?: string | null
+          store_name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       suppliers: {
         Row: {
           address: string | null
@@ -475,6 +550,7 @@ export type Database = {
     }
     Functions: {
       get_security_question: { Args: { user_email: string }; Returns: string }
+      get_security_questions: { Args: { user_email: string }; Returns: Json }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -484,6 +560,15 @@ export type Database = {
       }
       verify_security_answer: {
         Args: { answer: string; user_email: string }
+        Returns: boolean
+      }
+      verify_security_answers: {
+        Args: {
+          answer_1: string
+          answer_2?: string
+          answer_3?: string
+          user_email: string
+        }
         Returns: boolean
       }
     }

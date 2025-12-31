@@ -1,101 +1,198 @@
 import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import { Store, User, Bell, Shield, Database, Palette } from "lucide-react";
+import { Store, User, Bell, Shield, Database, Palette, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-
-interface StoreSettings {
-  storeName: string;
-  storeEmail: string;
-  storeAddress: string;
-}
-
-interface UserSettings {
-  fullName: string;
-  email: string;
-  role: string;
-}
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 interface NotificationSettings {
-  lowStockAlerts: boolean;
-  newOrderNotifications: boolean;
-  paymentConfirmations: boolean;
-  dailySummaryReports: boolean;
-  weeklyAnalyticsDigest: boolean;
+  low_stock_alerts: boolean;
+  new_order_notifications: boolean;
+  payment_confirmations: boolean;
+  daily_summary_reports: boolean;
+  weekly_analytics_digest: boolean;
 }
-
-interface AppearanceSettings {
-  theme: string;
-  accentColor: string;
-}
-
-const defaultStoreSettings: StoreSettings = {
-  storeName: "E-Trends Explorer",
-  storeEmail: "admin@etrends.com",
-  storeAddress: "123 Business Street, Tech City, TC 12345",
-};
-
-const defaultUserSettings: UserSettings = {
-  fullName: "Admin User",
-  email: "admin@etrends.com",
-  role: "Store Manager",
-};
-
-const defaultNotificationSettings: NotificationSettings = {
-  lowStockAlerts: true,
-  newOrderNotifications: true,
-  paymentConfirmations: true,
-  dailySummaryReports: false,
-  weeklyAnalyticsDigest: true,
-};
-
-const defaultAppearanceSettings: AppearanceSettings = {
-  theme: "dark",
-  accentColor: "primary",
-};
 
 export default function Settings() {
-  const [storeSettings, setStoreSettings] = useState<StoreSettings>(defaultStoreSettings);
-  const [userSettings, setUserSettings] = useState<UserSettings>(defaultUserSettings);
-  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(defaultNotificationSettings);
-  const [appearanceSettings, setAppearanceSettings] = useState<AppearanceSettings>(defaultAppearanceSettings);
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
   
-  // Password state
+  // Store settings
+  const [storeName, setStoreName] = useState("E-Trends Explorer");
+  const [storeEmail, setStoreEmail] = useState("");
+  const [storeAddress, setStoreAddress] = useState("");
+  
+  // User profile from backend
+  const { data: profile } = useQuery({
+    queryKey: ["profile", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user?.id,
+  });
+
+  // Store settings from backend
+  const { data: storeSettings, isLoading: storeLoading } = useQuery({
+    queryKey: ["store_settings"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("store_settings")
+        .select("*")
+        .limit(1)
+        .maybeSingle();
+      if (error && error.code !== "PGRST116") throw error;
+      return data;
+    },
+  });
+
+  // Notification preferences from backend
+  const { data: notificationPrefs, isLoading: notifLoading } = useQuery({
+    queryKey: ["notification_preferences", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      const { data, error } = await supabase
+        .from("notification_preferences")
+        .select("*")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (error && error.code !== "PGRST116") throw error;
+      return data;
+    },
+    enabled: !!user?.id,
+  });
+
+  const [notifications, setNotifications] = useState<NotificationSettings>({
+    low_stock_alerts: true,
+    new_order_notifications: true,
+    payment_confirmations: true,
+    daily_summary_reports: false,
+    weekly_analytics_digest: true,
+  });
+
+  const [fullName, setFullName] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [theme, setTheme] = useState("dark");
+  const [accentColor, setAccentColor] = useState("primary");
 
-  // Load settings from localStorage on mount
+  // Load data into state
   useEffect(() => {
-    const savedStore = localStorage.getItem("storeSettings");
-    const savedUser = localStorage.getItem("userSettings");
-    const savedNotifications = localStorage.getItem("notificationSettings");
-    const savedAppearance = localStorage.getItem("appearanceSettings");
+    if (storeSettings) {
+      setStoreName(storeSettings.store_name || "E-Trends Explorer");
+      setStoreEmail(storeSettings.store_email || "");
+      setStoreAddress(storeSettings.store_address || "");
+    }
+  }, [storeSettings]);
 
-    if (savedStore) setStoreSettings(JSON.parse(savedStore));
-    if (savedUser) setUserSettings(JSON.parse(savedUser));
-    if (savedNotifications) setNotificationSettings(JSON.parse(savedNotifications));
-    if (savedAppearance) setAppearanceSettings(JSON.parse(savedAppearance));
+  useEffect(() => {
+    if (profile) {
+      setFullName(profile.full_name || "");
+    }
+  }, [profile]);
+
+  useEffect(() => {
+    if (notificationPrefs) {
+      setNotifications({
+        low_stock_alerts: notificationPrefs.low_stock_alerts,
+        new_order_notifications: notificationPrefs.new_order_notifications,
+        payment_confirmations: notificationPrefs.payment_confirmations,
+        daily_summary_reports: notificationPrefs.daily_summary_reports,
+        weekly_analytics_digest: notificationPrefs.weekly_analytics_digest,
+      });
+    }
+  }, [notificationPrefs]);
+
+  useEffect(() => {
+    const savedAppearance = localStorage.getItem("appearanceSettings");
+    if (savedAppearance) {
+      const parsed = JSON.parse(savedAppearance);
+      setTheme(parsed.theme || "dark");
+      setAccentColor(parsed.accentColor || "primary");
+    }
   }, []);
 
-  const handleSaveStoreSettings = () => {
-    localStorage.setItem("storeSettings", JSON.stringify(storeSettings));
-    toast.success("Store settings saved successfully");
-  };
+  // Save store settings mutation
+  const saveStoreMutation = useMutation({
+    mutationFn: async () => {
+      if (storeSettings?.id) {
+        const { error } = await supabase
+          .from("store_settings")
+          .update({ store_name: storeName, store_email: storeEmail, store_address: storeAddress })
+          .eq("id", storeSettings.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("store_settings")
+          .insert({ store_name: storeName, store_email: storeEmail, store_address: storeAddress });
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["store_settings"] });
+      toast.success("Store settings saved");
+    },
+    onError: (error) => toast.error("Failed to save: " + error.message),
+  });
 
-  const handleSaveUserSettings = () => {
-    localStorage.setItem("userSettings", JSON.stringify(userSettings));
-    toast.success("User profile updated successfully");
-  };
+  // Save profile mutation
+  const saveProfileMutation = useMutation({
+    mutationFn: async () => {
+      if (!user?.id) throw new Error("Not authenticated");
+      const { error } = await supabase
+        .from("profiles")
+        .update({ full_name: fullName })
+        .eq("id", user.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["profile"] });
+      toast.success("Profile updated");
+    },
+    onError: (error) => toast.error("Failed to update: " + error.message),
+  });
+
+  // Save notification preferences mutation
+  const saveNotificationsMutation = useMutation({
+    mutationFn: async (notifs: NotificationSettings) => {
+      if (!user?.id) throw new Error("Not authenticated");
+      
+      if (notificationPrefs?.id) {
+        const { error } = await supabase
+          .from("notification_preferences")
+          .update(notifs)
+          .eq("id", notificationPrefs.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("notification_preferences")
+          .insert({ ...notifs, user_id: user.id });
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notification_preferences"] });
+      toast.success("Notification preferences updated");
+    },
+    onError: (error) => toast.error("Failed to save: " + error.message),
+  });
 
   const handleToggleNotification = (key: keyof NotificationSettings) => {
-    const updated = { ...notificationSettings, [key]: !notificationSettings[key] };
-    setNotificationSettings(updated);
-    localStorage.setItem("notificationSettings", JSON.stringify(updated));
-    toast.success("Notification preference updated");
+    const updated = { ...notifications, [key]: !notifications[key] };
+    setNotifications(updated);
+    saveNotificationsMutation.mutate(updated);
   };
 
-  const handleUpdatePassword = () => {
-    if (!currentPassword || !newPassword || !confirmPassword) {
+  const handleUpdatePassword = async () => {
+    if (!newPassword || !confirmPassword) {
       toast.error("Please fill in all password fields");
       return;
     }
@@ -107,19 +204,101 @@ export default function Settings() {
       toast.error("Password must be at least 6 characters");
       return;
     }
-    // In a real app, this would call an API
-    toast.success("Password updated successfully");
-    setCurrentPassword("");
-    setNewPassword("");
-    setConfirmPassword("");
+    
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) {
+      toast.error("Failed to update password: " + error.message);
+    } else {
+      toast.success("Password updated successfully");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    }
+  };
+
+  const handleExportData = async () => {
+    try {
+      // Fetch all data from backend
+      const [products, invoices, customers, suppliers, expenses] = await Promise.all([
+        supabase.from("products").select("*"),
+        supabase.from("invoices").select("*"),
+        supabase.from("customers").select("*"),
+        supabase.from("suppliers").select("*"),
+        supabase.from("expenses").select("*"),
+      ]);
+      
+      const exportData = {
+        products: products.data || [],
+        invoices: invoices.data || [],
+        customers: customers.data || [],
+        suppliers: suppliers.data || [],
+        expenses: expenses.data || [],
+        exportedAt: new Date().toISOString(),
+      };
+      
+      // Convert to CSV-like format
+      const csvData: string[] = [];
+      
+      // Products CSV
+      if (exportData.products.length > 0) {
+        csvData.push("=== PRODUCTS ===");
+        csvData.push(Object.keys(exportData.products[0]).join(","));
+        exportData.products.forEach(p => csvData.push(Object.values(p).join(",")));
+        csvData.push("");
+      }
+      
+      // Invoices CSV
+      if (exportData.invoices.length > 0) {
+        csvData.push("=== INVOICES ===");
+        csvData.push(Object.keys(exportData.invoices[0]).join(","));
+        exportData.invoices.forEach(i => csvData.push(Object.values(i).join(",")));
+        csvData.push("");
+      }
+      
+      // Customers CSV
+      if (exportData.customers.length > 0) {
+        csvData.push("=== CUSTOMERS ===");
+        csvData.push(Object.keys(exportData.customers[0]).join(","));
+        exportData.customers.forEach(c => csvData.push(Object.values(c).join(",")));
+        csvData.push("");
+      }
+      
+      // Suppliers CSV
+      if (exportData.suppliers.length > 0) {
+        csvData.push("=== SUPPLIERS ===");
+        csvData.push(Object.keys(exportData.suppliers[0]).join(","));
+        exportData.suppliers.forEach(s => csvData.push(Object.values(s).join(",")));
+        csvData.push("");
+      }
+      
+      // Expenses CSV
+      if (exportData.expenses.length > 0) {
+        csvData.push("=== EXPENSES ===");
+        csvData.push(Object.keys(exportData.expenses[0]).join(","));
+        exportData.expenses.forEach(e => csvData.push(Object.values(e).join(",")));
+      }
+      
+      const blob = new Blob([csvData.join("\n")], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `e-trends-export-${new Date().toISOString().split("T")[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Data exported successfully");
+    } catch (error: any) {
+      toast.error("Export failed: " + error.message);
+    }
   };
 
   const handleCreateBackup = () => {
     const backup = {
-      storeSettings,
-      userSettings,
-      notificationSettings,
-      appearanceSettings,
+      storeName,
+      storeEmail,
+      storeAddress,
+      notifications,
+      theme,
+      accentColor,
       timestamp: new Date().toISOString(),
     };
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
@@ -132,21 +311,15 @@ export default function Settings() {
     toast.success("Backup created and downloaded");
   };
 
-  const handleExportData = () => {
-    toast.info("Data export feature - Connect to backend for full export");
-  };
-
-  const handleThemeChange = (theme: string) => {
-    const updated = { ...appearanceSettings, theme };
-    setAppearanceSettings(updated);
-    localStorage.setItem("appearanceSettings", JSON.stringify(updated));
-    toast.success(`Theme changed to ${theme}`);
+  const handleThemeChange = (newTheme: string) => {
+    setTheme(newTheme);
+    localStorage.setItem("appearanceSettings", JSON.stringify({ theme: newTheme, accentColor }));
+    toast.success(`Theme changed to ${newTheme}`);
   };
 
   const handleAccentChange = (color: string) => {
-    const updated = { ...appearanceSettings, accentColor: color };
-    setAppearanceSettings(updated);
-    localStorage.setItem("appearanceSettings", JSON.stringify(updated));
+    setAccentColor(color);
+    localStorage.setItem("appearanceSettings", JSON.stringify({ theme, accentColor: color }));
     toast.success("Accent color updated");
   };
 
@@ -157,6 +330,16 @@ export default function Settings() {
     { name: "success", class: "bg-success" },
     { name: "purple", class: "bg-purple-500" },
   ];
+
+  if (storeLoading || notifLoading) {
+    return (
+      <DashboardLayout title="Settings" subtitle="Loading...">
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout
@@ -175,14 +358,14 @@ export default function Settings() {
               <p className="text-sm text-muted-foreground">Basic store details</p>
             </div>
           </div>
-          <form onSubmit={(e) => { e.preventDefault(); handleSaveStoreSettings(); }} className="space-y-4">
+          <form onSubmit={(e) => { e.preventDefault(); saveStoreMutation.mutate(); }} className="space-y-4">
             <div>
               <label className="text-sm font-medium text-muted-foreground">Store Name</label>
               <input 
                 type="text" 
                 className="input-field mt-1" 
-                value={storeSettings.storeName}
-                onChange={(e) => setStoreSettings({ ...storeSettings, storeName: e.target.value })}
+                value={storeName}
+                onChange={(e) => setStoreName(e.target.value)}
               />
             </div>
             <div>
@@ -190,8 +373,8 @@ export default function Settings() {
               <input 
                 type="email" 
                 className="input-field mt-1" 
-                value={storeSettings.storeEmail}
-                onChange={(e) => setStoreSettings({ ...storeSettings, storeEmail: e.target.value })}
+                value={storeEmail}
+                onChange={(e) => setStoreEmail(e.target.value)}
               />
             </div>
             <div>
@@ -199,11 +382,14 @@ export default function Settings() {
               <textarea 
                 className="input-field mt-1 resize-none" 
                 rows={2} 
-                value={storeSettings.storeAddress}
-                onChange={(e) => setStoreSettings({ ...storeSettings, storeAddress: e.target.value })}
+                value={storeAddress}
+                onChange={(e) => setStoreAddress(e.target.value)}
               />
             </div>
-            <button type="submit" className="btn-primary">Save Changes</button>
+            <button type="submit" className="btn-primary" disabled={saveStoreMutation.isPending}>
+              {saveStoreMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save Changes
+            </button>
           </form>
         </div>
 
@@ -218,14 +404,14 @@ export default function Settings() {
               <p className="text-sm text-muted-foreground">Your account settings</p>
             </div>
           </div>
-          <form onSubmit={(e) => { e.preventDefault(); handleSaveUserSettings(); }} className="space-y-4">
+          <form onSubmit={(e) => { e.preventDefault(); saveProfileMutation.mutate(); }} className="space-y-4">
             <div>
               <label className="text-sm font-medium text-muted-foreground">Full Name</label>
               <input 
                 type="text" 
                 className="input-field mt-1" 
-                value={userSettings.fullName}
-                onChange={(e) => setUserSettings({ ...userSettings, fullName: e.target.value })}
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
               />
             </div>
             <div>
@@ -233,15 +419,18 @@ export default function Settings() {
               <input 
                 type="email" 
                 className="input-field mt-1" 
-                value={userSettings.email}
-                onChange={(e) => setUserSettings({ ...userSettings, email: e.target.value })}
+                value={user?.email || ""}
+                disabled 
               />
             </div>
             <div>
               <label className="text-sm font-medium text-muted-foreground">Role</label>
-              <input type="text" className="input-field mt-1" value={userSettings.role} disabled />
+              <input type="text" className="input-field mt-1" value="Administrator" disabled />
             </div>
-            <button type="submit" className="btn-primary">Update Profile</button>
+            <button type="submit" className="btn-primary" disabled={saveProfileMutation.isPending}>
+              {saveProfileMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Update Profile
+            </button>
           </form>
         </div>
 
@@ -258,23 +447,23 @@ export default function Settings() {
           </div>
           <div className="space-y-4">
             {[
-              { key: "lowStockAlerts" as const, label: "Low stock alerts" },
-              { key: "newOrderNotifications" as const, label: "New order notifications" },
-              { key: "paymentConfirmations" as const, label: "Payment confirmations" },
-              { key: "dailySummaryReports" as const, label: "Daily summary reports" },
-              { key: "weeklyAnalyticsDigest" as const, label: "Weekly analytics digest" },
+              { key: "low_stock_alerts" as const, label: "Low stock alerts" },
+              { key: "new_order_notifications" as const, label: "New order notifications" },
+              { key: "payment_confirmations" as const, label: "Payment confirmations" },
+              { key: "daily_summary_reports" as const, label: "Daily summary reports" },
+              { key: "weekly_analytics_digest" as const, label: "Weekly analytics digest" },
             ].map((item) => (
               <div key={item.key} className="flex items-center justify-between">
                 <span className="text-sm text-foreground">{item.label}</span>
                 <button
                   onClick={() => handleToggleNotification(item.key)}
                   className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    notificationSettings[item.key] ? "bg-primary" : "bg-muted"
+                    notifications[item.key] ? "bg-primary" : "bg-muted"
                   }`}
                 >
                   <span
                     className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      notificationSettings[item.key] ? "translate-x-6" : "translate-x-1"
+                      notifications[item.key] ? "translate-x-6" : "translate-x-1"
                     }`}
                   />
                 </button>
@@ -295,16 +484,6 @@ export default function Settings() {
             </div>
           </div>
           <form onSubmit={(e) => { e.preventDefault(); handleUpdatePassword(); }} className="space-y-4">
-            <div>
-              <label className="text-sm font-medium text-muted-foreground">Current Password</label>
-              <input 
-                type="password" 
-                className="input-field mt-1" 
-                placeholder="••••••••" 
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-              />
-            </div>
             <div>
               <label className="text-sm font-medium text-muted-foreground">New Password</label>
               <input 
@@ -368,7 +547,7 @@ export default function Settings() {
               <label className="text-sm font-medium text-muted-foreground">Theme</label>
               <select 
                 className="input-field mt-1"
-                value={appearanceSettings.theme}
+                value={theme}
                 onChange={(e) => handleThemeChange(e.target.value)}
               >
                 <option value="dark">Dark (Default)</option>
@@ -384,7 +563,7 @@ export default function Settings() {
                     key={color.name}
                     onClick={() => handleAccentChange(color.name)}
                     className={`h-8 w-8 rounded-full ${color.class} ring-2 ring-offset-2 ring-offset-background ${
-                      appearanceSettings.accentColor === color.name ? "ring-primary" : "ring-transparent"
+                      accentColor === color.name ? "ring-primary" : "ring-transparent"
                     }`}
                   />
                 ))}

@@ -4,6 +4,7 @@ import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Truck, Plus, Search, Mail, Phone, Star, Edit, Trash2, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
 import {
   Dialog,
   DialogContent,
@@ -32,6 +33,7 @@ const initialForm: SupplierForm = {
 };
 
 export default function Suppliers() {
+  const { isAdmin } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<string | null>(null);
@@ -234,10 +236,12 @@ export default function Suppliers() {
               className="input-field pl-10"
             />
           </div>
-          <button className="btn-primary" onClick={() => setIsDialogOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Supplier
-          </button>
+          {isAdmin && (
+            <button className="btn-primary" onClick={() => setIsDialogOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Supplier
+            </button>
+          )}
         </div>
 
         {isLoading ? (
@@ -254,7 +258,7 @@ export default function Suppliers() {
                   <th>Orders</th>
                   <th>Rating</th>
                   <th>Status</th>
-                  <th>Actions</th>
+                  {isAdmin && <th>Actions</th>}
                 </tr>
               </thead>
               <tbody>
@@ -301,19 +305,21 @@ export default function Suppliers() {
                           {supplier.status}
                         </span>
                       </td>
-                      <td>
-                        <div className="flex items-center gap-2">
-                          <button className="btn-ghost p-2" onClick={() => handleEdit(supplier)}>
-                            <Edit className="h-4 w-4" />
-                          </button>
-                          <button 
-                            className="btn-ghost p-2 text-destructive hover:text-destructive"
-                            onClick={() => deleteMutation.mutate(supplier.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </td>
+                      {isAdmin && (
+                        <td>
+                          <div className="flex items-center gap-2">
+                            <button className="btn-ghost p-2" onClick={() => handleEdit(supplier)}>
+                              <Edit className="h-4 w-4" />
+                            </button>
+                            <button 
+                              className="btn-ghost p-2 text-destructive hover:text-destructive"
+                              onClick={() => deleteMutation.mutate(supplier.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))
                 )}
