@@ -15,6 +15,7 @@ import Suppliers from "./pages/Suppliers";
 import Analytics from "./pages/Analytics";
 import Settings from "./pages/Settings";
 import PythonIntegration from "./pages/PythonIntegration";
+import UserProfile from "./pages/UserProfile";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -39,6 +40,7 @@ const App = () => (
             <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute requireAdmin><Settings /></ProtectedRoute>} />
             <Route path="/python" element={<ProtectedRoute><PythonIntegration /></ProtectedRoute>} />
+            <Route path="/profile" element={<ProtectedRoute><UserProfile /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
