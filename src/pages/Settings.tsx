@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { UserManagement } from "@/components/settings/UserManagement";
 
 interface NotificationSettings {
   low_stock_alerts: boolean;
@@ -571,6 +572,9 @@ export default function Settings() {
             </div>
           </div>
         </div>
+
+        {/* User Management - Full Width */}
+        <UserManagement />
       </div>
     </DashboardLayout>
   );
