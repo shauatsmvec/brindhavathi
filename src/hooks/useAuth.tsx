@@ -51,16 +51,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [session, signOut]);
 
-  // Handle page refresh/beforeunload - clear session
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      // Mark session as ending on refresh
-      sessionStorage.removeItem(SESSION_KEY);
-    };
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, []);
+  // Note: We no longer clear session on beforeunload as it was causing login issues
+  // Session validation happens on visibility change and auth state change instead
 
   // Auto logout after inactivity
   useEffect(() => {
@@ -86,18 +78,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [session, signOut]);
 
-  // Check for existing session on page load
+  // Initialize auth state
   useEffect(() => {
-    const storedSessionId = sessionStorage.getItem(SESSION_KEY);
-    
-    // If no stored session ID, user needs to login fresh
-    if (!storedSessionId) {
-      supabase.auth.signOut().then(() => {
-        setIsLoading(false);
-      });
-      return;
-    }
-
     // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
@@ -106,7 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsLoading(false);
         
         if (session?.user) {
-          // Store session token for tab/refresh validation
+          // Store session token for tab validation
           sessionStorage.setItem(SESSION_KEY, session.access_token);
           
           setTimeout(() => {
@@ -121,17 +103,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Check for existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session && session.access_token === storedSessionId) {
-        setSession(session);
-        setUser(session.user);
+      setSession(session);
+      setUser(session?.user ?? null);
+      
+      if (session?.user) {
         sessionStorage.setItem(SESSION_KEY, session.access_token);
-        
-        if (session.user) {
-          checkAdminRole(session.user.id);
-        }
-      } else {
-        // Session mismatch or expired
-        supabase.auth.signOut();
+        checkAdminRole(session.user.id);
       }
       setIsLoading(false);
     });
