@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { action, targetUserId, newPassword, newName } = await req.json();
+    const { action, targetUserId, newPassword, newName, newRole } = await req.json();
 
     switch (action) {
       case "list": {
@@ -120,6 +120,49 @@ Deno.serve(async (req) => {
           .eq("id", targetUserId);
 
         if (updateError) throw updateError;
+
+        return new Response(JSON.stringify({ success: true }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      case "update_role": {
+        if (!targetUserId || !newRole) {
+          return new Response(JSON.stringify({ error: "Missing targetUserId or newRole" }), {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        // Prevent self-demotion
+        if (targetUserId === user.id && newRole !== "admin") {
+          return new Response(JSON.stringify({ error: "Cannot demote your own account" }), {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        // Check if user already has a role entry
+        const { data: existingRole } = await supabaseAdmin
+          .from("user_roles")
+          .select("id")
+          .eq("user_id", targetUserId)
+          .single();
+
+        if (existingRole) {
+          const { error: updateError } = await supabaseAdmin
+            .from("user_roles")
+            .update({ role: newRole })
+            .eq("user_id", targetUserId);
+          if (updateError) throw updateError;
+        } else {
+          const { error: insertError } = await supabaseAdmin
+            .from("user_roles")
+            .insert({ user_id: targetUserId, role: newRole });
+          if (insertError) throw insertError;
+        }
+
+        console.log(`Role updated for user ${targetUserId} to ${newRole}`);
 
         return new Response(JSON.stringify({ success: true }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -1,17 +1,18 @@
 # E-Trends Explorer
 
-A modern, responsive Retail/Store Management ERP-Lite System built with React, TypeScript, and Tailwind CSS. This application provides comprehensive tools for managing inventory, sales, procurement, expenses, customers, suppliers, and analytics.
+A modern, responsive Retail/Store Management ERP-Lite System built with React, TypeScript, Tailwind CSS, and Supabase. This application provides comprehensive tools for managing inventory, sales, procurement, expenses, customers, suppliers, and analytics with robust security features.
 
-![E-Trends Explorer](https://img.shields.io/badge/React-18.3-blue) ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue) ![Tailwind CSS](https://img.shields.io/badge/Tailwind-3.4-blue) ![Vite](https://img.shields.io/badge/Vite-5.0-purple)
+![E-Trends Explorer](https://img.shields.io/badge/React-18.3-blue) ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue) ![Tailwind CSS](https://img.shields.io/badge/Tailwind-3.4-blue) ![Supabase](https://img.shields.io/badge/Supabase-Backend-green)
 
 ## 📋 Table of Contents
 
 - [Features](#-features)
+- [Security Features](#-security-features)
+- [User Roles](#-user-roles)
 - [Tech Stack](#-tech-stack)
 - [Project Structure](#-project-structure)
 - [Getting Started](#-getting-started)
-- [Module Overview](#-module-overview)
-- [Design System](#-design-system)
+- [Documentation](#-documentation)
 - [Contributing](#-contributing)
 - [License](#-license)
 
@@ -22,11 +23,13 @@ A modern, responsive Retail/Store Management ERP-Lite System built with React, T
 - **📊 Dashboard** - Real-time KPIs, sales charts, inventory status, and recent transactions
 - **📦 Inventory Management** - Product tracking, stock levels, low-stock alerts, and category filtering
 - **🛒 Sales & Billing** - Invoice management, payment tracking, and revenue analytics
-- **🚚 Procurement** - Purchase order management and supplier tracking
-- **💰 Expense Tracking** - Categorized expenses with visual breakdowns
+- **🚚 Procurement** - Purchase order management and supplier tracking (Admin only)
+- **💰 Expense Tracking** - Categorized expenses with visual breakdowns (Admin only)
 - **👥 Customer Management** - Customer profiles and purchase history
 - **🏢 Supplier Management** - Supplier ratings and order history
 - **📈 Analytics & Reports** - Revenue trends, profit analysis, and data visualization
+- **⚙️ Settings** - Store configuration, user management, and system preferences (Admin only)
+- **👤 User Profile** - Personal analytics and performance metrics (Regular users)
 
 ### UI/UX Features
 
@@ -36,6 +39,51 @@ A modern, responsive Retail/Store Management ERP-Lite System built with React, T
 - ⚡ Smooth animations and transitions
 - 📊 Interactive charts powered by Recharts
 
+## 🔐 Security Features
+
+### Authentication
+- **Email/Password Authentication** - Secure sign-up and login
+- **Security Questions** - 3 mandatory questions during registration for password recovery
+- **No Email Links** - Password reset via security question verification
+
+### Session Security
+- **Session-Based Auth** - Tokens stored in sessionStorage
+- **Tab Isolation** - Session invalidated on tab switch
+- **Auto-Logout** - 30-minute inactivity timeout
+- **Refresh Protection** - Re-login required on page refresh
+
+### Database Security
+- **Row Level Security (RLS)** - All tables protected with RLS policies
+- **Role-Based Access** - Server-side role verification
+- **Separate Roles Table** - Prevents privilege escalation attacks
+
+## 👥 User Roles
+
+### Administrator
+| Module | Access Level |
+|--------|--------------|
+| Dashboard | Full Access |
+| Inventory | Full CRUD |
+| Sales | Full CRUD |
+| Suppliers | Full CRUD |
+| Customers | Full CRUD |
+| Expenses | Full CRUD |
+| Procurement | Full CRUD |
+| Analytics | View |
+| Settings | Full Access |
+| User Management | Full CRUD (edit names, passwords, roles, delete users) |
+
+### Regular User
+| Module | Access Level |
+|--------|--------------|
+| Dashboard | View |
+| Inventory | View Only |
+| Sales | Full CRUD |
+| Suppliers | View Only |
+| Customers | Full CRUD |
+| Analytics | View |
+| User Profile | View & Edit Own |
+
 ## 🛠 Tech Stack
 
 | Technology | Purpose |
@@ -44,69 +92,36 @@ A modern, responsive Retail/Store Management ERP-Lite System built with React, T
 | [TypeScript](https://www.typescriptlang.org/) | Type Safety |
 | [Vite](https://vitejs.dev/) | Build Tool |
 | [Tailwind CSS](https://tailwindcss.com/) | Styling |
+| [Supabase](https://supabase.com/) | Backend (Auth, Database, Edge Functions) |
 | [React Router](https://reactrouter.com/) | Navigation |
-| [Recharts](https://recharts.org/) | Data Visualization |
-| [Lucide React](https://lucide.dev/) | Icons |
-| [Radix UI](https://www.radix-ui.com/) | Accessible Components |
 | [TanStack Query](https://tanstack.com/query) | Data Fetching |
+| [Recharts](https://recharts.org/) | Data Visualization |
+| [Radix UI](https://www.radix-ui.com/) | Accessible Components |
 
 ## 📁 Project Structure
 
 ```
 e-trends-explorer/
+├── docs/                      # Project documentation
+│   └── PROJECT_DOCUMENTATION.md
 ├── public/                    # Static assets
-│   ├── favicon.ico
-│   ├── robots.txt
-│   └── placeholder.svg
 ├── src/
 │   ├── components/
-│   │   ├── dashboard/         # Dashboard-specific components
-│   │   │   ├── InventoryStatus.tsx
-│   │   │   ├── RecentTransactions.tsx
-│   │   │   ├── SalesChart.tsx
-│   │   │   ├── StatCard.tsx
-│   │   │   └── TopProducts.tsx
+│   │   ├── dashboard/         # Dashboard widgets
 │   │   ├── layout/            # Layout components
-│   │   │   ├── DashboardLayout.tsx
-│   │   │   ├── Header.tsx
-│   │   │   ├── MobileSidebar.tsx
-│   │   │   └── Sidebar.tsx
-│   │   └── ui/                # Reusable UI components (shadcn/ui)
+│   │   ├── settings/          # Settings components
+│   │   └── ui/                # Reusable UI components
 │   ├── hooks/                 # Custom React hooks
-│   │   ├── use-mobile.tsx
-│   │   └── use-toast.ts
+│   │   ├── useAuth.tsx        # Authentication hook
+│   │   └── use-mobile.tsx
+│   ├── integrations/          # Supabase integration
 │   ├── lib/                   # Utility functions
-│   │   └── utils.ts
-│   ├── pages/                 # Page components
-│   │   ├── Analytics.tsx
-│   │   ├── Customers.tsx
-│   │   ├── Dashboard.tsx
-│   │   ├── Expenses.tsx
-│   │   ├── Inventory.tsx
-│   │   ├── NotFound.tsx
-│   │   ├── Procurement.tsx
-│   │   ├── Sales.tsx
-│   │   ├── Settings.tsx
-│   │   └── Suppliers.tsx
-│   ├── App.tsx                # Main app with routes
-│   ├── App.css                # App-specific styles
-│   ├── index.css              # Global styles & design system
-│   ├── main.tsx               # App entry point
-│   └── vite-env.d.ts          # Vite type declarations
-├── .env.example               # Environment variables template
-├── .gitignore
-├── CHANGELOG.md               # Version history
-├── CONTRIBUTING.md            # Contribution guidelines
-├── LICENSE                    # MIT License
-├── README.md                  # This file
-├── components.json            # shadcn/ui configuration
-├── eslint.config.js           # ESLint configuration
-├── index.html                 # HTML template
-├── package.json               # Dependencies
-├── postcss.config.js          # PostCSS configuration
-├── tailwind.config.ts         # Tailwind configuration
-├── tsconfig.json              # TypeScript configuration
-└── vite.config.ts             # Vite configuration
+│   └── pages/                 # Page components
+├── supabase/
+│   ├── functions/             # Edge functions
+│   │   └── admin-manage-users/
+│   └── migrations/            # Database migrations
+└── README.md
 ```
 
 ## 🚀 Getting Started
@@ -127,28 +142,21 @@ e-trends-explorer/
 2. **Install dependencies**
    ```bash
    npm install
-   # or
-   yarn install
-   # or
-   bun install
    ```
 
-3. **Set up environment variables** (optional)
+3. **Set up environment variables**
    ```bash
    cp .env.example .env
+   # Add your Supabase credentials
    ```
 
 4. **Start the development server**
    ```bash
    npm run dev
-   # or
-   yarn dev
-   # or
-   bun dev
    ```
 
 5. **Open your browser**
-   Navigate to `http://localhost:5173` (or the URL shown in terminal)
+   Navigate to `http://localhost:5173`
 
 ### Build for Production
 
@@ -156,124 +164,23 @@ e-trends-explorer/
 npm run build
 ```
 
-The build output will be in the `dist/` folder.
+### Setting Up Admin User
 
-### Preview Production Build
-
-```bash
-npm run preview
+After creating your first user, run this SQL query in your database:
+```sql
+UPDATE public.user_roles SET role = 'admin' WHERE user_id = 'YOUR_USER_ID';
 ```
 
-## 📖 Module Overview
+## 📖 Documentation
 
-### Dashboard
-The main landing page providing an overview of:
-- Key performance indicators (Revenue, Orders, Products, Profit, Customers, Expenses)
-- Sales trend chart (7-day overview)
-- Inventory status breakdown
-- Recent transactions
-- Top-selling products
+For detailed project documentation including:
+- Complete database schema
+- Security implementation details
+- Authentication flows
+- API reference
+- Feature specifications
 
-### Inventory Management
-Comprehensive product management:
-- Search and filter products by category
-- View stock levels with low-stock indicators
-- SKU tracking
-- Cost and pricing information
-- Status badges (In Stock, Low Stock, Out of Stock)
-
-### Sales & Billing
-Invoice and transaction management:
-- Create and track invoices
-- Filter by payment status (Paid, Pending, Overdue)
-- Revenue summaries
-- Payment method tracking
-- Customer information
-
-### Procurement
-Purchase order and supplier management:
-- Track purchase orders by status
-- Supplier relationship management
-- Expected delivery tracking
-- Order totals and item counts
-- Top supplier overview
-
-### Expense Tracking
-Operational expense management:
-- Categorized expenses (Rent, Payroll, Marketing, etc.)
-- Visual expense breakdown by category
-- Quick expense entry form
-- Budget tracking
-
-### Customer Management
-Customer relationship features:
-- Customer directory with search
-- Purchase history tracking
-- Total spending per customer
-- Last order tracking
-
-### Supplier Management
-Supplier relationship features:
-- Supplier directory with ratings
-- Order history
-- Total business volume
-- Contact information
-
-### Analytics & Reports
-Comprehensive data visualization:
-- Revenue vs Expenses trends
-- Profit analysis
-- Sales by category breakdown
-- Daily sales patterns
-- Inventory trend analysis
-
-### Settings
-Application configuration:
-- Store information
-- User profile management
-- Notification preferences
-- Security settings
-- Data management
-- Appearance customization
-
-## 🎨 Design System
-
-### Color Palette
-
-The application uses a professional dark theme with the following semantic colors:
-
-| Token | Purpose | HSL Value |
-|-------|---------|-----------|
-| `--primary` | Main brand color (Teal) | `160 84% 39%` |
-| `--accent` | Accent color (Amber) | `38 92% 50%` |
-| `--success` | Positive indicators | `160 84% 39%` |
-| `--warning` | Warning states | `38 92% 50%` |
-| `--destructive` | Error/danger states | `0 72% 51%` |
-| `--info` | Informational | `200 90% 50%` |
-
-### Typography
-
-- **Primary Font**: Inter (UI elements)
-- **Monospace Font**: JetBrains Mono (code, IDs)
-
-### Component Classes
-
-Custom utility classes available:
-
-```css
-.glass-card     /* Glassmorphism card effect */
-.stat-card      /* Statistics card with hover glow */
-.data-table     /* Styled data tables */
-.nav-link       /* Navigation link styling */
-.chart-container /* Chart wrapper */
-.badge-success  /* Success badge */
-.badge-warning  /* Warning badge */
-.badge-danger   /* Danger badge */
-.input-field    /* Form input styling */
-.btn-primary    /* Primary button */
-.btn-secondary  /* Secondary button */
-.btn-ghost      /* Ghost button */
-```
+See [docs/PROJECT_DOCUMENTATION.md](docs/PROJECT_DOCUMENTATION.md)
 
 ## 🤝 Contributing
 
@@ -291,6 +198,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgements
 
+- [Supabase](https://supabase.com/) - Open source Firebase alternative
 - [shadcn/ui](https://ui.shadcn.com/) - Beautifully designed components
 - [Recharts](https://recharts.org/) - Composable charting library
 - [Lucide](https://lucide.dev/) - Beautiful & consistent icons

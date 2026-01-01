@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Users, Loader2, Pencil, Trash2, Key, X, Check } from "lucide-react";
+import { Users, Loader2, Pencil, Trash2, Key, Shield } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -21,6 +21,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -39,9 +46,11 @@ export function UserManagement() {
   const [editingUser, setEditingUser] = useState<ManagedUser | null>(null);
   const [deletingUser, setDeletingUser] = useState<ManagedUser | null>(null);
   const [passwordUser, setPasswordUser] = useState<ManagedUser | null>(null);
+  const [roleUser, setRoleUser] = useState<ManagedUser | null>(null);
   const [newName, setNewName] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [selectedRole, setSelectedRole] = useState<string>("user");
 
   const { data: users, isLoading, error } = useQuery({
     queryKey: ["admin-users"],
@@ -92,6 +101,22 @@ export function UserManagement() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const updateRoleMutation = useMutation({
+    mutationFn: async ({ userId, role }: { userId: string; role: string }) => {
+      const response = await supabase.functions.invoke("admin-manage-users", {
+        body: { action: "update_role", targetUserId: userId, newRole: role },
+      });
+      if (response.error) throw response.error;
+      if (response.data.error) throw new Error(response.data.error);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      toast.success("User role updated");
+      setRoleUser(null);
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   const deleteUserMutation = useMutation({
     mutationFn: async (userId: string) => {
       const response = await supabase.functions.invoke("admin-manage-users", {
@@ -113,9 +138,19 @@ export function UserManagement() {
     setNewName(user.full_name);
   };
 
+  const handleEditRole = (user: ManagedUser) => {
+    setRoleUser(user);
+    setSelectedRole(user.role);
+  };
+
   const handleSaveName = () => {
     if (!editingUser || !newName.trim()) return;
     updateNameMutation.mutate({ userId: editingUser.id, name: newName.trim() });
+  };
+
+  const handleSaveRole = () => {
+    if (!roleUser) return;
+    updateRoleMutation.mutate({ userId: roleUser.id, role: selectedRole });
   };
 
   const handleChangePassword = () => {
@@ -223,6 +258,14 @@ export function UserManagement() {
                       <Button
                         variant="ghost"
                         size="sm"
+                        onClick={() => handleEditRole(user)}
+                        title="Change role"
+                      >
+                        <Shield className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => setPasswordUser(user)}
                         title="Change password"
                       >
@@ -308,6 +351,38 @@ export function UserManagement() {
             <Button onClick={handleChangePassword} disabled={updatePasswordMutation.isPending}>
               {updatePasswordMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Update Password
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Change Role Dialog */}
+      <Dialog open={!!roleUser} onOpenChange={() => setRoleUser(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Change User Role</DialogTitle>
+            <DialogDescription>
+              Update the role for {roleUser?.email}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Select value={selectedRole} onValueChange={setSelectedRole}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select role" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="user">User</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRoleUser(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveRole} disabled={updateRoleMutation.isPending}>
+              {updateRoleMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save Role
             </Button>
           </DialogFooter>
         </DialogContent>
