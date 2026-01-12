@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import { Store, User, Bell, Shield, Database, Palette, Loader2 } from "lucide-react";
+import { Store, User, Bell, Shield, Database, Palette, Loader2, Download } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { UserManagement } from "@/components/settings/UserManagement";
+import { downloadSqlExport } from "@/utils/exportSql";
 
 interface NotificationSettings {
   low_stock_alerts: boolean;
@@ -521,6 +522,30 @@ export default function Settings() {
             </div>
           </div>
           <div className="space-y-4">
+            <div className="rounded-lg bg-muted/30 p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Download className="h-4 w-4 text-primary" />
+                <p className="text-sm font-medium text-foreground">Export SQL (for database migration)</p>
+              </div>
+              <p className="text-sm text-muted-foreground mb-3">
+                Download all data as SQL INSERT statements. Use this to migrate to your personal database.
+              </p>
+              <button 
+                onClick={async () => {
+                  try {
+                    toast.info("Generating SQL export...");
+                    await downloadSqlExport();
+                    toast.success("SQL export downloaded successfully!");
+                  } catch (error: any) {
+                    toast.error("Export failed: " + error.message);
+                  }
+                }} 
+                className="btn-primary w-full"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Download SQL Export
+              </button>
+            </div>
             <div className="rounded-lg bg-muted/30 p-4">
               <p className="text-sm text-muted-foreground mb-2">Create a backup of your settings</p>
               <button onClick={handleCreateBackup} className="btn-secondary w-full">Create Backup</button>
