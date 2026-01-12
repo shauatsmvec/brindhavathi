@@ -113,14 +113,49 @@ export default function Settings() {
     }
   }, [notificationPrefs]);
 
+  // Apply theme on mount and when changed
   useEffect(() => {
     const savedAppearance = localStorage.getItem("appearanceSettings");
     if (savedAppearance) {
       const parsed = JSON.parse(savedAppearance);
-      setTheme(parsed.theme || "dark");
-      setAccentColor(parsed.accentColor || "primary");
+      const savedTheme = parsed.theme || "dark";
+      const savedAccent = parsed.accentColor || "primary";
+      setTheme(savedTheme);
+      setAccentColor(savedAccent);
+      applyTheme(savedTheme);
+      applyAccentColor(savedAccent);
     }
   }, []);
+
+  const applyTheme = (newTheme: string) => {
+    const root = document.documentElement;
+    if (newTheme === "system") {
+      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      root.classList.toggle("dark", prefersDark);
+      root.classList.toggle("light", !prefersDark);
+    } else if (newTheme === "light") {
+      root.classList.remove("dark");
+      root.classList.add("light");
+    } else {
+      root.classList.add("dark");
+      root.classList.remove("light");
+    }
+  };
+
+  const accentColorValues: Record<string, { primary: string; ring: string }> = {
+    primary: { primary: "160 84% 39%", ring: "160 84% 39%" },
+    info: { primary: "200 90% 50%", ring: "200 90% 50%" },
+    warning: { primary: "38 92% 50%", ring: "38 92% 50%" },
+    success: { primary: "142 76% 36%", ring: "142 76% 36%" },
+    purple: { primary: "270 70% 60%", ring: "270 70% 60%" },
+  };
+
+  const applyAccentColor = (color: string) => {
+    const root = document.documentElement;
+    const values = accentColorValues[color] || accentColorValues.primary;
+    root.style.setProperty("--primary", values.primary);
+    root.style.setProperty("--ring", values.ring);
+  };
 
   // Save store settings mutation
   const saveStoreMutation = useMutation({
@@ -315,12 +350,14 @@ export default function Settings() {
 
   const handleThemeChange = (newTheme: string) => {
     setTheme(newTheme);
+    applyTheme(newTheme);
     localStorage.setItem("appearanceSettings", JSON.stringify({ theme: newTheme, accentColor }));
     toast.success(`Theme changed to ${newTheme}`);
   };
 
   const handleAccentChange = (color: string) => {
     setAccentColor(color);
+    applyAccentColor(color);
     localStorage.setItem("appearanceSettings", JSON.stringify({ theme, accentColor: color }));
     toast.success("Accent color updated");
   };
