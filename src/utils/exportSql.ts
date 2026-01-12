@@ -15,11 +15,13 @@ const escapeSqlValue = (value: unknown): string => {
   return `'${JSON.stringify(value).replace(/'/g, "''")}'`;
 };
 
-// Generate INSERT statements for a table
-const generateInserts = (tableName: string, rows: Record<string, unknown>[]): string => {
+// Generate UPSERT statements for a table (INSERT ... ON CONFLICT UPDATE)
+const generateUpserts = (tableName: string, rows: Record<string, unknown>[], primaryKey: string = "id"): string => {
   if (!rows || rows.length === 0) return "";
 
   const columns = Object.keys(rows[0]);
+  const updateColumns = columns.filter(col => col !== primaryKey);
+  
   const lines: string[] = [
     `-- Table: ${tableName}`,
     `-- Records: ${rows.length}`,
@@ -28,8 +30,10 @@ const generateInserts = (tableName: string, rows: Record<string, unknown>[]): st
 
   for (const row of rows) {
     const values = columns.map((col) => escapeSqlValue(row[col]));
+    const updateSet = updateColumns.map(col => `${col} = EXCLUDED.${col}`).join(", ");
+    
     lines.push(
-      `INSERT INTO public.${tableName} (${columns.join(", ")}) VALUES (${values.join(", ")});`
+      `INSERT INTO public.${tableName} (${columns.join(", ")}) VALUES (${values.join(", ")}) ON CONFLICT (${primaryKey}) DO UPDATE SET ${updateSet};`
     );
   }
 
@@ -70,8 +74,9 @@ export const exportDatabaseAsSql = async (): Promise<string> => {
 -- Generated: ${new Date().toISOString()}
 -- ============================================
 --
--- This file contains INSERT statements for all data.
--- Run this on your target database after creating the schema.
+-- This file contains UPSERT statements for all data.
+-- Records are inserted if new, or updated if they already exist.
+-- Safe to run multiple times - NO DUPLICATES will be created.
 --
 -- IMPORTANT: Make sure your target database has the same schema
 -- You can use the database_full_migration.sql file for the schema.
@@ -87,24 +92,24 @@ SET session_replication_role = replica;
 SET session_replication_role = DEFAULT;
 
 -- ============================================
--- Export Complete
+-- Export Complete - Safe to run multiple times
 -- ============================================
 `;
 
   // Generate SQL in correct order (parent tables first due to foreign keys)
   const sql = [
     header,
-    generateInserts("categories", categoriesRes.data || []),
-    generateInserts("expense_categories", expenseCategoriesRes.data || []),
-    generateInserts("customers", customersRes.data || []),
-    generateInserts("suppliers", suppliersRes.data || []),
-    generateInserts("products", productsRes.data || []),
-    generateInserts("invoices", invoicesRes.data || []),
-    generateInserts("invoice_items", invoiceItemsRes.data || []),
-    generateInserts("expenses", expensesRes.data || []),
-    generateInserts("purchase_orders", purchaseOrdersRes.data || []),
-    generateInserts("purchase_order_items", purchaseOrderItemsRes.data || []),
-    generateInserts("store_settings", storeSettingsRes.data || []),
+    generateUpserts("categories", categoriesRes.data || []),
+    generateUpserts("expense_categories", expenseCategoriesRes.data || []),
+    generateUpserts("customers", customersRes.data || []),
+    generateUpserts("suppliers", suppliersRes.data || []),
+    generateUpserts("products", productsRes.data || []),
+    generateUpserts("invoices", invoicesRes.data || []),
+    generateUpserts("invoice_items", invoiceItemsRes.data || []),
+    generateUpserts("expenses", expensesRes.data || []),
+    generateUpserts("purchase_orders", purchaseOrdersRes.data || []),
+    generateUpserts("purchase_order_items", purchaseOrderItemsRes.data || []),
+    generateUpserts("store_settings", storeSettingsRes.data || []),
     footer,
   ].join("\n");
 
