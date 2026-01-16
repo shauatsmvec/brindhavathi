@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Bell, Search, User, Menu, LogOut } from "lucide-react";
 import { SearchModal } from "./SearchModal";
 import { NotificationsDropdown } from "./NotificationsDropdown";
+import { OfflineIndicator } from "./OfflineIndicator";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 
@@ -65,6 +66,9 @@ export function Header({ title, subtitle, onMenuClick }: HeaderProps) {
             >
               <Search className="h-5 w-5" />
             </button>
+
+            {/* Offline Indicator */}
+            <OfflineIndicator />
 
             {/* Notifications */}
             <NotificationsDropdown />
